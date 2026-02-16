@@ -63,3 +63,20 @@ create policy "Users can delete own interests" on public.interests for delete to
 create policy "Users can view own suggestions" on public.hangout_suggestions for select to authenticated using (sender_user_id = auth.uid() or recipient_user_id = auth.uid());
 create policy "Users can create suggestions" on public.hangout_suggestions for insert to authenticated with check (sender_user_id = auth.uid());
 create policy "Recipients can update suggestions" on public.hangout_suggestions for update to authenticated using (recipient_user_id = auth.uid());
+
+-- Availability table
+create table public.availability (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  day_of_week int not null check (day_of_week between 0 and 6),
+  start_time time not null,
+  end_time time not null,
+  created_at timestamptz default now()
+);
+
+alter table public.availability enable row level security;
+
+create policy "Users can view all availability" on public.availability for select to authenticated using (true);
+create policy "Users can insert own availability" on public.availability for insert to authenticated with check (user_id = auth.uid());
+create policy "Users can update own availability" on public.availability for update to authenticated using (user_id = auth.uid());
+create policy "Users can delete own availability" on public.availability for delete to authenticated using (user_id = auth.uid());
