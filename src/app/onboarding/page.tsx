@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+  function getSupabase() {
+    if (!supabaseRef.current) {
+      supabaseRef.current = createClient();
+    }
+    return supabaseRef.current;
+  }
 
   const [firstName, setFirstName] = useState("");
   const [username, setUsername] = useState("");
@@ -24,7 +31,7 @@ export default function OnboardingPage() {
         return;
       }
       setCheckingUsername(true);
-      const { data } = await supabase
+      const { data } = await getSupabase()
         .from("users")
         .select("id")
         .eq("username", value)
@@ -32,7 +39,7 @@ export default function OnboardingPage() {
       setUsernameAvailable(!data);
       setCheckingUsername(false);
     },
-    [supabase]
+    []
   );
 
   useEffect(() => {
@@ -47,6 +54,7 @@ export default function OnboardingPage() {
     setError(null);
     setSubmitting(true);
 
+    const supabase = getSupabase();
     const {
       data: { user },
     } = await supabase.auth.getUser();
