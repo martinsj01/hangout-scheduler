@@ -66,6 +66,91 @@ interface HangoutRequest {
   interest_title: string | null;
 }
 
+function SlotDigit({ target, delay }: { target: number; delay: number }) {
+  const [display, setDisplay] = useState(0);
+  const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    const startTime = Date.now() + delay;
+    const duration = 1400;
+    let raf: number;
+
+    const tick = () => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 0) {
+        setDisplay(Math.floor(Math.random() * 10));
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      if (elapsed >= duration) {
+        setDisplay(target);
+        setSettled(true);
+        return;
+      }
+      // Slow down: interval increases as we approach the end
+      const progress = elapsed / duration;
+      if (progress > 0.85) {
+        // Final stretch — show target
+        setDisplay(target);
+        setSettled(true);
+        return;
+      }
+      setDisplay(Math.floor(Math.random() * 10));
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, delay]);
+
+  return (
+    <span
+      className={`inline-block tabular-nums transition-opacity duration-300 ${
+        settled ? "opacity-100" : "opacity-70"
+      }`}
+    >
+      {display}
+    </span>
+  );
+}
+
+function IntroAnimation({ loading }: { loading: boolean }) {
+  const TARGET = 546;
+  const digits = String(TARGET).split("").map(Number);
+  const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    if (!loading) {
+      // Start fade-out near the end of the animation
+      const timer = setTimeout(() => setFadeOut(true), 2700);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
+  return (
+    <div
+      className={`flex min-h-screen flex-col items-center justify-center bg-black transition-opacity duration-500 ${
+        fadeOut ? "opacity-0" : "opacity-100"
+      }`}
+    >
+      <div className="flex items-baseline gap-1">
+        <span className="text-7xl font-extralight tracking-tight text-white sm:text-8xl">
+          {loading ? (
+            <span className="opacity-30">...</span>
+          ) : (
+            digits.map((d, i) => (
+              <SlotDigit key={i} target={d} delay={i * 200} />
+            ))
+          )}
+        </span>
+      </div>
+      <p className="mt-4 text-lg font-light tracking-widest text-white/60 uppercase">
+        Hangs Scheduled
+      </p>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const supabaseRef = useRef<SupabaseClient | null>(null);
@@ -81,6 +166,7 @@ export default function DashboardPage() {
   const [interests, setInterests] = useState<Interest[]>([]);
   const [hangs, setHangs] = useState<Hang[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showIntro, setShowIntro] = useState(true);
   const [showFriends, setShowFriends] = useState(false);
   const [showInterests, setShowInterests] = useState(false);
   const [availability, setAvailability] = useState<Availability[]>([]);
@@ -569,15 +655,19 @@ export default function DashboardPage() {
     return `${h > 12 ? h - 12 : h} ${h < 12 ? "AM" : "PM"}`;
   };
 
+  // Intro animation: dismiss after slot machine finishes
+  useEffect(() => {
+    if (!loading && showIntro) {
+      const timer = setTimeout(() => setShowIntro(false), 3200);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, showIntro]);
+
   const inputClass =
     "block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
-        <p className="text-zinc-500">Loading...</p>
-      </div>
-    );
+  if (loading || showIntro) {
+    return <IntroAnimation loading={loading} />;
   }
 
   return (
@@ -1176,6 +1266,39 @@ export default function DashboardPage() {
 
                 const colCount = dayColumns.length;
 
+                // Compute visible hours based on availability and hangs for visible columns
+                const relevantHoursSet = new Set<number>();
+                for (const col of dayColumns) {
+                  // Hours from availability
+                  for (const a of availability) {
+                    if (a.day_of_week === col.dow) {
+                      const startH = parseInt(a.start_time.split(":")[0], 10);
+                      const endH = parseInt(a.end_time.split(":")[0], 10);
+                      // If end_time has non-zero minutes, include that hour too
+                      const endMin = parseInt(a.end_time.split(":")[1], 10);
+                      const effectiveEnd = endMin > 0 ? endH + 1 : endH;
+                      for (let h = startH; h < effectiveEnd; h++) {
+                        relevantHoursSet.add(h);
+                      }
+                    }
+                  }
+                  // Hours from hangs
+                  const colDateStr = col.date.toDateString();
+                  for (const hang of hangs) {
+                    const hangDate = new Date(hang.proposed_datetime);
+                    if (hangDate.toDateString() === colDateStr) {
+                      relevantHoursSet.add(hangDate.getHours());
+                    }
+                  }
+                }
+
+                let visibleHours: number[];
+                if (relevantHoursSet.size === 0) {
+                  visibleHours = HOURS;
+                } else {
+                  visibleHours = [...relevantHoursSet].sort((a, b) => a - b);
+                }
+
                 return (
                   <div
                     className="grid gap-px"
@@ -1200,7 +1323,7 @@ export default function DashboardPage() {
                         </div>
                       );
                     })}
-                    {HOURS.map((hour) => (
+                    {visibleHours.map((hour) => (
                       <React.Fragment key={`row-${hour}`}>
                         <div className="pr-2 text-right text-[10px] leading-6 text-zinc-400">
                           {formatHour(hour)}
