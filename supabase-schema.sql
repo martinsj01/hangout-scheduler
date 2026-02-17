@@ -31,7 +31,7 @@ create table public.hangout_suggestions (
   id uuid primary key default gen_random_uuid(),
   sender_user_id uuid not null references public.users(id) on delete cascade,
   recipient_user_id uuid not null references public.users(id) on delete cascade,
-  interest_id uuid not null references public.interests(id) on delete cascade,
+  interest_id uuid references public.interests(id) on delete set null,
   proposed_datetime timestamptz not null,
   message text,
   location text,

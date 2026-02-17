@@ -60,6 +60,7 @@ export default function OnboardingPage() {
   const [friendSearch, setFriendSearch] = useState("");
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [addedFriends, setAddedFriends] = useState<Set<string>>(new Set());
+  const [friendErrors, setFriendErrors] = useState<Record<string, string>>({});
   const [searching, setSearching] = useState(false);
 
   // Shared
@@ -189,13 +190,16 @@ export default function OnboardingPage() {
 
   // Step 4: Add friend
   const handleAddFriend = async (friendId: string) => {
+    setFriendErrors((prev) => { const next = { ...prev }; delete next[friendId]; return next; });
     const supabase = getSupabase();
     const { error: insertError } = await supabase.from("friends").insert({
       user_id: userId!,
       friend_user_id: friendId,
       status: "pending",
     });
-    if (!insertError) {
+    if (insertError) {
+      setFriendErrors((prev) => ({ ...prev, [friendId]: insertError.message }));
+    } else {
       setAddedFriends((prev) => new Set(prev).add(friendId));
     }
   };
@@ -504,17 +508,22 @@ export default function OnboardingPage() {
                           <p className="text-xs text-zinc-500">@{user.username}</p>
                         </div>
                       </div>
-                      {addedFriends.has(user.id) ? (
-                        <span className="text-sm text-green-600">Added</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleAddFriend(user.id)}
-                          className="rounded-md bg-zinc-900 px-3 py-1 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                        >
-                          Add
-                        </button>
-                      )}
+                      <div className="flex flex-col items-end gap-1">
+                        {addedFriends.has(user.id) ? (
+                          <span className="text-sm text-green-600">Added</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleAddFriend(user.id)}
+                            className="rounded-md bg-zinc-900 px-3 py-1 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                          >
+                            Add
+                          </button>
+                        )}
+                        {friendErrors[user.id] && (
+                          <p className="text-xs text-red-500">{friendErrors[user.id]}</p>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
