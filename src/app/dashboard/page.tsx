@@ -467,9 +467,15 @@ export default function DashboardPage() {
     setSelectedCells([cell]);
   };
 
-  const handlePointerEnter = (day: number, hour: number, colIdx: number) => {
+  const handleGridPointerMove = (e: React.PointerEvent) => {
     if (!isDragging.current || !dragStart) return;
-    setSelectedCells(buildRange(dragStart, { dow: day, hour, colIdx }));
+    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    if (!el) return;
+    const dow = el.dataset.dow;
+    const hour = el.dataset.hour;
+    const col = el.dataset.col;
+    if (dow == null || hour == null || col == null) return;
+    setSelectedCells(buildRange(dragStart, { dow: +dow, hour: +hour, colIdx: +col }));
   };
 
   const handlePointerUp = () => {
@@ -477,7 +483,7 @@ export default function DashboardPage() {
     setDragStart(null);
   };
 
-  // Global mouseup to end drag even if pointer leaves the grid
+  // Global pointerup to end drag even if pointer leaves the grid
   useEffect(() => {
     const onUp = () => {
       if (isDragging.current) {
@@ -1174,6 +1180,8 @@ export default function DashboardPage() {
                   <div
                     className="grid gap-px"
                     style={{ gridTemplateColumns: `auto repeat(${colCount}, 1fr)` }}
+                    onPointerMove={handleGridPointerMove}
+                    onPointerUp={handlePointerUp}
                   >
                     <div />
                     {dayColumns.map((col, i) => {
@@ -1204,17 +1212,12 @@ export default function DashboardPage() {
                             <button
                               key={`${i}-${hour}`}
                               type="button"
+                              data-dow={col.dow}
+                              data-hour={hour}
+                              data-col={i}
                               onPointerDown={(e) => {
                                 e.preventDefault();
                                 handlePointerDown(col.dow, hour, i);
-                              }}
-                              onPointerEnter={(e) => {
-                                e.preventDefault();
-                                handlePointerEnter(col.dow, hour, i);
-                              }}
-                              onPointerUp={(e) => {
-                                e.preventDefault();
-                                handlePointerUp();
                               }}
                               draggable={false}
                               className={`h-8 rounded-sm border transition-colors select-none touch-none ${
