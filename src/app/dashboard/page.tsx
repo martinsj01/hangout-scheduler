@@ -31,7 +31,7 @@ interface Hang {
   location: string | null;
   description: string | null;
   interest: { title: string } | null;
-  friend: { first_name: string; username: string } | null;
+  friend: { first_name: string; username: string; profile_photo_url: string | null } | null;
 }
 
 interface Availability {
@@ -72,13 +72,15 @@ function SlotDigit({ target, delay }: { target: number; delay: number }) {
 
   useEffect(() => {
     const startTime = Date.now() + delay;
-    const duration = 1400;
+    const duration = 900;
     let raf: number;
+    let lastFlip = 0;
+    const flipInterval = 120;
 
     const tick = () => {
-      const elapsed = Date.now() - startTime;
+      const now = Date.now();
+      const elapsed = now - startTime;
       if (elapsed < 0) {
-        setDisplay(Math.floor(Math.random() * 10));
         raf = requestAnimationFrame(tick);
         return;
       }
@@ -87,15 +89,10 @@ function SlotDigit({ target, delay }: { target: number; delay: number }) {
         setSettled(true);
         return;
       }
-      // Slow down: interval increases as we approach the end
-      const progress = elapsed / duration;
-      if (progress > 0.85) {
-        // Final stretch — show target
-        setDisplay(target);
-        setSettled(true);
-        return;
+      if (now - lastFlip >= flipInterval) {
+        setDisplay(Math.floor(Math.random() * 10));
+        lastFlip = now;
       }
-      setDisplay(Math.floor(Math.random() * 10));
       raf = requestAnimationFrame(tick);
     };
 
@@ -122,7 +119,7 @@ function IntroAnimation({ loading }: { loading: boolean }) {
   useEffect(() => {
     if (!loading) {
       // Start fade-out near the end of the animation
-      const timer = setTimeout(() => setFadeOut(true), 2700);
+      const timer = setTimeout(() => setFadeOut(true), 1400);
       return () => clearTimeout(timer);
     }
   }, [loading]);
@@ -149,6 +146,58 @@ function IntroAnimation({ loading }: { loading: boolean }) {
       </p>
     </div>
   );
+}
+
+const HANGOUT_IDEAS = [
+  { emoji: "⚽", title: "Soccer at Pier 40", location: "Pier 40, Hudson River Park", hasOffer: false },
+  { emoji: "☕", title: "New Coffee Shop in SoHo", location: "SoHo, Manhattan", hasOffer: true },
+  { emoji: "🛁", title: "Wall St Baths", location: "Wall Street Bath & Spa", hasOffer: false },
+  { emoji: "🍕", title: "Pizza Night in LES", location: "Lower East Side", hasOffer: true },
+  { emoji: "🎭", title: "Comedy Show", location: "Village Vanguard", hasOffer: true },
+  { emoji: "🏃", title: "Morning Run", location: "Central Park", hasOffer: false },
+];
+
+function getTimeSuggestions() {
+  const now = new Date();
+  const suggestions: { label: string; sublabel: string; datetime: string }[] = [];
+
+  const tonight = new Date(now);
+  tonight.setHours(18, 0, 0, 0);
+  if (now.getHours() < 17) {
+    suggestions.push({ label: "Tonight", sublabel: "After work · 6pm", datetime: tonight.toISOString() });
+  }
+
+  const daysUntilFri = ((5 - now.getDay()) + 7) % 7 || 7;
+  const friday = new Date(now);
+  friday.setDate(now.getDate() + daysUntilFri);
+  friday.setHours(19, 0, 0, 0);
+  suggestions.push({
+    label: "Friday",
+    sublabel: friday.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " · 7pm",
+    datetime: friday.toISOString(),
+  });
+
+  const daysUntilSat = ((6 - now.getDay()) + 7) % 7 || 7;
+  const saturday = new Date(now);
+  saturday.setDate(now.getDate() + daysUntilSat);
+  saturday.setHours(14, 0, 0, 0);
+  suggestions.push({
+    label: "Saturday",
+    sublabel: saturday.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " · 2pm",
+    datetime: saturday.toISOString(),
+  });
+
+  const daysUntilSun = ((7 - now.getDay()) + 7) % 7 || 7;
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() + daysUntilSun);
+  sunday.setHours(11, 0, 0, 0);
+  suggestions.push({
+    label: "Sunday",
+    sublabel: sunday.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " · 11am",
+    datetime: sunday.toISOString(),
+  });
+
+  return suggestions;
 }
 
 export default function DashboardPage() {
@@ -192,14 +241,11 @@ export default function DashboardPage() {
   const [hangoutRequests, setHangoutRequests] = useState<HangoutRequest[]>([]);
 
   // Schedule hangout state
+  const [showAvailability, setShowAvailability] = useState(false);
   const [showScheduleHangout, setShowScheduleHangout] = useState(false);
-  const [hangoutForm, setHangoutForm] = useState({
-    friendId: "",
-    datetime: "",
-    interestId: "",
-    location: "",
-    message: "",
-  });
+  const [scheduleSelectedFriendIds, setScheduleSelectedFriendIds] = useState<string[]>([]);
+  const [scheduleSelectedTime, setScheduleSelectedTime] = useState<{ label: string; sublabel: string; datetime: string } | null>(null);
+  const [scheduleSelectedIdea, setScheduleSelectedIdea] = useState<{ emoji: string; title: string; location: string } | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
 
@@ -287,14 +333,14 @@ export default function DashboardPage() {
           interest = intData;
         }
         const friendId = "recipient_user_id" in h ? h.recipient_user_id : h.sender_user_id;
-        let friend: { first_name: string; username: string } | null = null;
+        let friend: { first_name: string; username: string; profile_photo_url: string | null } | null = null;
         if (friendId) {
           const { data: fData } = await supabase
             .from("users")
-            .select("first_name, username")
+            .select("first_name, username, profile_photo_url")
             .eq("id", friendId)
             .single();
-          friend = fData;
+          friend = fData as { first_name: string; username: string; profile_photo_url: string | null } | null;
         }
         hangList.push({
           id: h.id,
@@ -483,32 +529,44 @@ export default function DashboardPage() {
     setHangoutRequests((prev) => prev.filter((r) => r.id !== requestId));
   };
 
+  const toggleScheduleFriend = (friendId: string) => {
+    setScheduleSelectedFriendIds((prev) =>
+      prev.includes(friendId) ? prev.filter((id) => id !== friendId) : [...prev, friendId]
+    );
+  };
+
   // Schedule hangout handler
   const handleScheduleHangout = async () => {
     if (!profile) return;
-    if (!hangoutForm.friendId || !hangoutForm.datetime) {
-      setScheduleError("Please select a friend and date/time.");
+    if (scheduleSelectedFriendIds.length === 0 || !scheduleSelectedTime || !scheduleSelectedIdea) {
+      setScheduleError("Select a friend, time, and hangout idea.");
       return;
     }
     setScheduleError(null);
     setScheduling(true);
     const supabase = getSupabase();
-    const { error } = await supabase.from("hangout_suggestions").insert({
-      sender_user_id: profile.id,
-      recipient_user_id: hangoutForm.friendId,
-      interest_id: hangoutForm.interestId || null,
-      proposed_datetime: new Date(hangoutForm.datetime).toISOString(),
-      location: hangoutForm.location || null,
-      message: hangoutForm.message || null,
-      status: "pending",
-    });
-    setScheduling(false);
-    if (error) {
-      setScheduleError(error.message);
-    } else {
-      setShowScheduleHangout(false);
-      setHangoutForm({ friendId: "", datetime: "", interestId: "", location: "", message: "" });
+    for (const friendId of scheduleSelectedFriendIds) {
+      const { error } = await supabase.from("hangout_suggestions").insert({
+        sender_user_id: profile.id,
+        recipient_user_id: friendId,
+        interest_id: null,
+        proposed_datetime: scheduleSelectedTime.datetime,
+        location: scheduleSelectedIdea.location,
+        description: scheduleSelectedIdea.title,
+        message: null,
+        status: "pending",
+      });
+      if (error) {
+        setScheduleError(error.message);
+        setScheduling(false);
+        return;
+      }
     }
+    setScheduling(false);
+    setShowScheduleHangout(false);
+    setScheduleSelectedFriendIds([]);
+    setScheduleSelectedTime(null);
+    setScheduleSelectedIdea(null);
   };
 
   const notificationCount = friendRequests.length + hangoutRequests.length;
@@ -658,7 +716,7 @@ export default function DashboardPage() {
   // Intro animation: dismiss after slot machine finishes
   useEffect(() => {
     if (!loading && showIntro) {
-      const timer = setTimeout(() => setShowIntro(false), 3200);
+      const timer = setTimeout(() => setShowIntro(false), 1900);
       return () => clearTimeout(timer);
     }
   }, [loading, showIntro]);
@@ -950,422 +1008,469 @@ export default function DashboardPage() {
 
         {/* Upcoming Hangs */}
         <div className="mt-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-              Upcoming Hangs
-            </h2>
-            <button
-              type="button"
-              onClick={() => setShowScheduleHangout(true)}
-              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              Schedule Hangout
-            </button>
-          </div>
-
-          {/* Schedule Hangout Modal */}
-          {showScheduleHangout && (
-            <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">New Hangout</h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowScheduleHangout(false);
-                    setScheduleError(null);
-                  }}
-                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="mt-3 space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Friend</label>
-                  <select
-                    value={hangoutForm.friendId}
-                    onChange={(e) => setHangoutForm((f) => ({ ...f, friendId: e.target.value }))}
-                    className={inputClass}
-                  >
-                    <option value="">Select a friend...</option>
-                    {friends.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.first_name} (@{f.username})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Date & Time</label>
-                  <input
-                    type="datetime-local"
-                    value={hangoutForm.datetime}
-                    onChange={(e) => setHangoutForm((f) => ({ ...f, datetime: e.target.value }))}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Interest (optional)</label>
-                  <select
-                    value={hangoutForm.interestId}
-                    onChange={(e) => setHangoutForm((f) => ({ ...f, interestId: e.target.value }))}
-                    className={inputClass}
-                  >
-                    <option value="">None</option>
-                    {interests.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Location (optional)</label>
-                  <input
-                    type="text"
-                    placeholder="Where?"
-                    value={hangoutForm.location}
-                    onChange={(e) => setHangoutForm((f) => ({ ...f, location: e.target.value }))}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Message (optional)</label>
-                  <textarea
-                    placeholder="Any details..."
-                    value={hangoutForm.message}
-                    onChange={(e) => setHangoutForm((f) => ({ ...f, message: e.target.value }))}
-                    rows={2}
-                    className={inputClass}
-                  />
-                </div>
-                {scheduleError && <p className="text-sm text-red-500">{scheduleError}</p>}
-                <button
-                  type="button"
-                  onClick={handleScheduleHangout}
-                  disabled={scheduling}
-                  className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                >
-                  {scheduling ? "Sending..." : "Send Invitation"}
-                </button>
-              </div>
-            </div>
-          )}
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            Upcoming Hangs
+          </h2>
           {hangs.length === 0 ? (
-            <p className="mt-4 text-zinc-500">Schedule a Hang!</p>
+            <p className="mt-4 text-zinc-400">Nothing yet — schedule one below!</p>
           ) : (
             <div className="mt-4 space-y-3">
-              {hangs.map((hang) => (
-                <div
-                  key={hang.id}
-                  className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      {hang.interest && (
-                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                          {hang.interest.title}
+              {hangs.map((hang) => {
+                const title = hang.description || hang.interest?.title || "Hangout";
+                const hangDate = new Date(hang.proposed_datetime);
+                const dayLabel = hangDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                const timeLabel = hangDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                return (
+                  <div key={hang.id} className="rounded-2xl bg-white dark:bg-zinc-900 p-5 shadow-sm">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate">
+                          {title}
                         </p>
-                      )}
-                      {hang.friend && (
-                        <p className="text-sm text-zinc-500">
-                          with {hang.friend.first_name} (@{hang.friend.username})
-                        </p>
-                      )}
-                      {hang.location && (
-                        <p className="mt-1 text-sm text-zinc-500">{hang.location}</p>
-                      )}
-                      {hang.description && (
-                        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                          {hang.description}
-                        </p>
-                      )}
+                        {hang.friend && (
+                          <div className="mt-2 flex items-center gap-2">
+                            {hang.friend.profile_photo_url ? (
+                              <img src={hang.friend.profile_photo_url} alt="" className="h-5 w-5 rounded-full object-cover" />
+                            ) : (
+                              <div className="h-5 w-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-semibold text-zinc-500">
+                                {hang.friend.first_name[0]}
+                              </div>
+                            )}
+                            <p className="text-sm text-zinc-500">{hang.friend.first_name}</p>
+                          </div>
+                        )}
+                        {hang.location && (
+                          <p className="mt-1.5 text-xs text-zinc-400">{hang.location}</p>
+                        )}
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{dayLabel}</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">{timeLabel}</p>
+                      </div>
                     </div>
-                    <p className="shrink-0 text-sm text-zinc-500">
-                      {new Date(hang.proposed_datetime).toLocaleDateString(undefined, {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </p>
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Plan a Hang */}
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Plan a Hang</h2>
+            {showScheduleHangout && (
+              <button
+                type="button"
+                onClick={() => { setShowScheduleHangout(false); setScheduleSelectedFriendIds([]); setScheduleSelectedTime(null); setScheduleSelectedIdea(null); setScheduleError(null); }}
+                className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {!showScheduleHangout ? (
+            <>
+              {/* Friends preview row */}
+              {friends.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar mb-4">
+                  {friends.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => { toggleScheduleFriend(f.id); setShowScheduleHangout(true); }}
+                      className="flex flex-col items-center gap-1 flex-shrink-0"
+                    >
+                      {f.profile_photo_url ? (
+                        <img src={f.profile_photo_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm font-semibold text-zinc-600 dark:text-zinc-400">
+                          {f.first_name[0]}
+                        </div>
+                      )}
+                      <span className="text-xs text-zinc-500">{f.first_name}</span>
+                    </button>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* Hang ideas preview */}
+              <div className="grid grid-cols-2 gap-3">
+                {HANGOUT_IDEAS.map((idea) => (
+                  <button
+                    key={idea.title}
+                    type="button"
+                    onClick={() => { setScheduleSelectedIdea(idea); setShowScheduleHangout(true); }}
+                    className="relative rounded-2xl bg-white dark:bg-zinc-900 p-4 text-left shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    {idea.hasOffer && (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute top-3 right-3 h-4 w-4 text-zinc-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                      </svg>
+                    )}
+                    <span className="text-2xl mb-2 block">{idea.emoji}</span>
+                    <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-snug">{idea.title}</p>
+                    <p className="text-xs text-zinc-400 mt-1">{idea.location}</p>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-3xl bg-white dark:bg-zinc-900 p-6 shadow-lg">
+              {/* Who */}
+              <div className="mb-7">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 mb-3">Who</p>
+                {friends.length === 0 ? (
+                  <p className="text-sm text-zinc-400">Add friends first to invite them.</p>
+                ) : (
+                  <div className="flex gap-4 overflow-x-auto pb-1 no-scrollbar">
+                    {friends.map((f) => {
+                      const selected = scheduleSelectedFriendIds.includes(f.id);
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => toggleScheduleFriend(f.id)}
+                          className="flex flex-col items-center gap-1.5 flex-shrink-0 transition-all"
+                        >
+                          <div className={`relative rounded-full ring-2 ring-offset-2 transition-all ${selected ? "ring-zinc-900 dark:ring-zinc-100 ring-offset-white dark:ring-offset-zinc-900" : "ring-transparent"}`}>
+                            {f.profile_photo_url ? (
+                              <img src={f.profile_photo_url} alt="" className="h-14 w-14 rounded-full object-cover" />
+                            ) : (
+                              <div className="h-14 w-14 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-lg font-semibold text-zinc-600 dark:text-zinc-400">
+                                {f.first_name[0]}
+                              </div>
+                            )}
+                            {selected && (
+                              <div className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center shadow">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3 text-white dark:text-zinc-900">
+                                  <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <span className={`text-xs font-medium transition-colors ${selected ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"}`}>
+                            {f.first_name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* When */}
+              <div className="mb-7">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 mb-3">When</p>
+                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  {getTimeSuggestions().map((slot) => {
+                    const selected = scheduleSelectedTime?.datetime === slot.datetime;
+                    return (
+                      <button
+                        key={slot.datetime}
+                        type="button"
+                        onClick={() => setScheduleSelectedTime(selected ? null : slot)}
+                        className={`flex-shrink-0 rounded-2xl px-4 py-3 text-left transition-all ${
+                          selected ? "bg-zinc-900 dark:bg-zinc-100" : "bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        <p className={`text-sm font-semibold ${selected ? "text-white dark:text-zinc-900" : "text-zinc-800 dark:text-zinc-200"}`}>{slot.label}</p>
+                        <p className={`text-xs mt-0.5 ${selected ? "text-zinc-300 dark:text-zinc-600" : "text-zinc-400"}`}>{slot.sublabel}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Hang ideas */}
+              <div className="mb-7">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 mb-3">Pick a hang</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {HANGOUT_IDEAS.map((idea) => {
+                    const selected = scheduleSelectedIdea?.title === idea.title;
+                    const dateLabel = scheduleSelectedTime?.sublabel ?? "Pick a time";
+                    return (
+                      <button
+                        key={idea.title}
+                        type="button"
+                        onClick={() => setScheduleSelectedIdea(selected ? null : idea)}
+                        className={`relative rounded-2xl p-4 text-left transition-all ${
+                          selected
+                            ? "bg-zinc-900 dark:bg-zinc-100 ring-2 ring-zinc-900 dark:ring-zinc-100"
+                            : "bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        {idea.hasOffer && (
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`absolute top-3 right-3 h-4 w-4 ${selected ? "text-zinc-500 dark:text-zinc-500" : "text-zinc-400"}`}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                          </svg>
+                        )}
+                        <span className="text-2xl mb-2.5 block">{idea.emoji}</span>
+                        <p className={`text-sm font-semibold leading-snug ${selected ? "text-white dark:text-zinc-900" : "text-zinc-900 dark:text-zinc-100"}`}>{idea.title}</p>
+                        <p className={`text-xs mt-1 ${selected ? "text-zinc-400 dark:text-zinc-600" : "text-zinc-400"}`}>{idea.location}</p>
+                        <p className={`text-xs mt-0.5 ${selected ? "text-zinc-400 dark:text-zinc-600" : "text-zinc-400"}`}>{dateLabel}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {scheduleError && <p className="text-sm text-red-500 mb-4">{scheduleError}</p>}
+
+              <button
+                type="button"
+                onClick={handleScheduleHangout}
+                disabled={scheduling || scheduleSelectedFriendIds.length === 0 || !scheduleSelectedTime || !scheduleSelectedIdea}
+                className="w-full rounded-2xl bg-zinc-900 py-3.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-25 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 transition-all"
+              >
+                {scheduling ? "Sending…" : "Send Invitation"}
+              </button>
             </div>
           )}
         </div>
 
         {/* Availability Calendar */}
-        <div className="mt-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-              Availability
-            </h2>
-            <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-700">
-              {([["3day", "3 Day"], ["2week", "2 Week"], ["month", "Month"]] as const).map(
-                ([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => {
-                      setCalendarView(value);
-                      setSelectedCells([]);
-                      if (value !== "3day") setCalendarAnchor(new Date());
-                    }}
-                    className={`px-3 py-1 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
-                      calendarView === value
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                        : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                )
-              )}
-            </div>
-          </div>
+        <div className="mt-8 pb-8">
+          <button
+            type="button"
+            onClick={() => setShowAvailability(!showAvailability)}
+            className="flex w-full items-center justify-between"
+          >
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Availability</h2>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`h-5 w-5 text-zinc-400 transition-transform duration-200 ${showAvailability ? "rotate-180" : ""}`}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+            </svg>
+          </button>
 
-          {/* Selected cells action bar */}
-          {selectedCells.length > 0 && (() => {
-            const sorted = [...selectedCells].sort((a, b) => a.hour - b.hour);
-            const first = sorted[0];
-            const last = sorted[sorted.length - 1];
-            const allAvailable = sorted.every((c) => isCellAvailable(c.dow, c.hour));
-            const allUnavailable = sorted.every((c) => !isCellAvailable(c.dow, c.hour));
-            const statusLabel = allAvailable ? "Available" : allUnavailable ? "Unavailable" : "Mixed";
-            const dotColor = allAvailable
-              ? "bg-emerald-400"
-              : allUnavailable
-              ? "bg-zinc-300 dark:bg-zinc-600"
-              : "bg-amber-400";
-
-            return (
-              <div className="mt-3 flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
-                <div className="flex items-center gap-3">
-                  <span className={`inline-block h-3 w-3 rounded-full ${dotColor}`} />
-                  <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                    {DAYS[first.dow]} {formatHour(first.hour)} – {formatHour(last.hour + 1)}
-                    {sorted.length > 1 && (
-                      <span className="ml-1 text-xs text-zinc-400">({sorted.length} hrs)</span>
-                    )}
-                    <span className="ml-2 text-xs text-zinc-400">{statusLabel}</span>
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCells([])}
-                    className="rounded-md px-3 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleToggleAvailability}
-                    className={`rounded-md px-3 py-1 text-xs font-medium text-white transition-colors ${
-                      allAvailable
-                        ? "bg-rose-500 hover:bg-rose-600"
-                        : "bg-emerald-500 hover:bg-emerald-600"
-                    }`}
-                  >
-                    {allAvailable ? "Remove availability" : "Add availability"}
-                  </button>
+          {showAvailability && (
+            <div>
+              <div className="mt-4 flex justify-end">
+                <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-700">
+                  {([["3day", "3 Day"], ["2week", "2 Week"], ["month", "Month"]] as const).map(
+                    ([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => {
+                          setCalendarView(value);
+                          setSelectedCells([]);
+                          if (value !== "3day") setCalendarAnchor(new Date());
+                        }}
+                        className={`px-3 py-1 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
+                          calendarView === value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
-            );
-          })()}
 
-          <div className="mt-4 overflow-x-auto">
-            {calendarView === "month" ? (
-              (() => {
-                const today = new Date();
-                const year = today.getFullYear();
-                const month = today.getMonth();
-                const firstDay = new Date(year, month, 1).getDay();
-                const daysInMonth = new Date(year, month + 1, 0).getDate();
-                const monthName = today.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-                const hasAvailability = (dayOfWeek: number) =>
-                  availability.some((a) => a.day_of_week === dayOfWeek);
-                const cells: (number | null)[] = [];
-                for (let i = 0; i < firstDay; i++) cells.push(null);
-                for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-                while (cells.length % 7 !== 0) cells.push(null);
-
+              {selectedCells.length > 0 && (() => {
+                const sorted = [...selectedCells].sort((a, b) => a.hour - b.hour);
+                const first = sorted[0];
+                const last = sorted[sorted.length - 1];
+                const allAvailable = sorted.every((c) => isCellAvailable(c.dow, c.hour));
+                const allUnavailable = sorted.every((c) => !isCellAvailable(c.dow, c.hour));
+                const statusLabel = allAvailable ? "Available" : allUnavailable ? "Unavailable" : "Mixed";
+                const dotColor = allAvailable
+                  ? "bg-emerald-400"
+                  : allUnavailable
+                  ? "bg-zinc-300 dark:bg-zinc-600"
+                  : "bg-amber-400";
                 return (
-                  <div>
-                    <p className="mb-2 text-center text-sm font-medium text-zinc-500">{monthName}</p>
-                    <div className="grid grid-cols-7 gap-1">
-                      {DAYS.map((day) => (
-                        <div key={day} className="py-1 text-center text-xs font-medium text-zinc-500">
-                          {day}
-                        </div>
-                      ))}
-                      {cells.map((date, idx) => {
-                        if (date === null) return <div key={`empty-${idx}`} />;
-                        const dow = new Date(year, month, date).getDay();
-                        const hasAvail = hasAvailability(dow);
-                        const isToday =
-                          date === today.getDate() &&
-                          month === today.getMonth();
-                        return (
-                          <button
-                            key={date}
-                            type="button"
-                            onClick={() => {
-                              const clickedDate = new Date(year, month, date);
-                              const anchor = new Date(clickedDate);
-                              anchor.setDate(anchor.getDate() - 1);
-                              setCalendarAnchor(anchor);
-                              setCalendarView("3day");
-                              setSelectedCells([]);
-                            }}
-                            className={`flex h-8 items-center justify-center rounded-md text-xs transition-colors ${
-                              hasAvail
-                                ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60"
-                                : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-                            } ${isToday ? "ring-2 ring-indigo-400 dark:ring-indigo-500" : ""}`}
-                          >
-                            {date}
-                          </button>
-                        );
-                      })}
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
+                    <div className="flex items-center gap-3">
+                      <span className={`inline-block h-3 w-3 rounded-full ${dotColor}`} />
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                        {DAYS[first.dow]} {formatHour(first.hour)} – {formatHour(last.hour + 1)}
+                        {sorted.length > 1 && (
+                          <span className="ml-1 text-xs text-zinc-400">({sorted.length} hrs)</span>
+                        )}
+                        <span className="ml-2 text-xs text-zinc-400">{statusLabel}</span>
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCells([])}
+                        className="rounded-md px-3 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleToggleAvailability}
+                        className={`rounded-md px-3 py-1 text-xs font-medium text-white transition-colors ${
+                          allAvailable ? "bg-rose-500 hover:bg-rose-600" : "bg-emerald-500 hover:bg-emerald-600"
+                        }`}
+                      >
+                        {allAvailable ? "Remove availability" : "Add availability"}
+                      </button>
                     </div>
                   </div>
                 );
-              })()
-            ) : (
-              (() => {
-                const anchor = calendarAnchor;
-                let dayColumns: { label: string; dow: number; date: Date }[];
+              })()}
 
-                if (calendarView === "3day") {
-                  dayColumns = Array.from({ length: 3 }, (_, i) => {
-                    const d = new Date(anchor);
-                    d.setDate(d.getDate() + i);
-                    return {
-                      label: d.toLocaleDateString(undefined, { weekday: "short", month: "numeric", day: "numeric" }),
-                      dow: d.getDay(),
-                      date: d,
-                    };
-                  });
-                } else {
-                  dayColumns = Array.from({ length: 14 }, (_, i) => {
-                    const d = new Date(anchor);
-                    d.setDate(d.getDate() + i);
-                    return {
-                      label: d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }),
-                      dow: d.getDay(),
-                      date: d,
-                    };
-                  });
-                }
-
-                const colCount = dayColumns.length;
-
-                // Compute visible hours based on availability and hangs for visible columns
-                const relevantHoursSet = new Set<number>();
-                for (const col of dayColumns) {
-                  // Hours from availability
-                  for (const a of availability) {
-                    if (a.day_of_week === col.dow) {
-                      const startH = parseInt(a.start_time.split(":")[0], 10);
-                      const endH = parseInt(a.end_time.split(":")[0], 10);
-                      // If end_time has non-zero minutes, include that hour too
-                      const endMin = parseInt(a.end_time.split(":")[1], 10);
-                      const effectiveEnd = endMin > 0 ? endH + 1 : endH;
-                      for (let h = startH; h < effectiveEnd; h++) {
-                        relevantHoursSet.add(h);
+              <div className="mt-4 overflow-x-auto">
+                {calendarView === "month" ? (
+                  (() => {
+                    const today = new Date();
+                    const year = today.getFullYear();
+                    const month = today.getMonth();
+                    const firstDay = new Date(year, month, 1).getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const monthName = today.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+                    const hasAvailability = (dayOfWeek: number) =>
+                      availability.some((a) => a.day_of_week === dayOfWeek);
+                    const cells: (number | null)[] = [];
+                    for (let i = 0; i < firstDay; i++) cells.push(null);
+                    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                    while (cells.length % 7 !== 0) cells.push(null);
+                    return (
+                      <div>
+                        <p className="mb-2 text-center text-sm font-medium text-zinc-500">{monthName}</p>
+                        <div className="grid grid-cols-7 gap-1">
+                          {DAYS.map((day) => (
+                            <div key={day} className="py-1 text-center text-xs font-medium text-zinc-500">
+                              {day}
+                            </div>
+                          ))}
+                          {cells.map((date, idx) => {
+                            if (date === null) return <div key={`empty-${idx}`} />;
+                            const dow = new Date(year, month, date).getDay();
+                            const hasAvail = hasAvailability(dow);
+                            const isToday = date === today.getDate() && month === today.getMonth();
+                            return (
+                              <button
+                                key={date}
+                                type="button"
+                                onClick={() => {
+                                  const clickedDate = new Date(year, month, date);
+                                  const anchor = new Date(clickedDate);
+                                  anchor.setDate(anchor.getDate() - 1);
+                                  setCalendarAnchor(anchor);
+                                  setCalendarView("3day");
+                                  setSelectedCells([]);
+                                }}
+                                className={`flex h-8 items-center justify-center rounded-md text-xs transition-colors ${
+                                  hasAvail
+                                    ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60"
+                                    : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                                } ${isToday ? "ring-2 ring-indigo-400 dark:ring-indigo-500" : ""}`}
+                              >
+                                {date}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  (() => {
+                    const anchor = calendarAnchor;
+                    let dayColumns: { label: string; dow: number; date: Date }[];
+                    if (calendarView === "3day") {
+                      dayColumns = Array.from({ length: 3 }, (_, i) => {
+                        const d = new Date(anchor);
+                        d.setDate(d.getDate() + i);
+                        return {
+                          label: d.toLocaleDateString(undefined, { weekday: "short", month: "numeric", day: "numeric" }),
+                          dow: d.getDay(),
+                          date: d,
+                        };
+                      });
+                    } else {
+                      dayColumns = Array.from({ length: 14 }, (_, i) => {
+                        const d = new Date(anchor);
+                        d.setDate(d.getDate() + i);
+                        return {
+                          label: d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }),
+                          dow: d.getDay(),
+                          date: d,
+                        };
+                      });
+                    }
+                    const colCount = dayColumns.length;
+                    const relevantHoursSet = new Set<number>();
+                    for (const col of dayColumns) {
+                      for (const a of availability) {
+                        if (a.day_of_week === col.dow) {
+                          const startH = parseInt(a.start_time.split(":")[0], 10);
+                          const endH = parseInt(a.end_time.split(":")[0], 10);
+                          const endMin = parseInt(a.end_time.split(":")[1], 10);
+                          const effectiveEnd = endMin > 0 ? endH + 1 : endH;
+                          for (let h = startH; h < effectiveEnd; h++) relevantHoursSet.add(h);
+                        }
+                      }
+                      const colDateStr = col.date.toDateString();
+                      for (const hang of hangs) {
+                        const hangDate = new Date(hang.proposed_datetime);
+                        if (hangDate.toDateString() === colDateStr) relevantHoursSet.add(hangDate.getHours());
                       }
                     }
-                  }
-                  // Hours from hangs
-                  const colDateStr = col.date.toDateString();
-                  for (const hang of hangs) {
-                    const hangDate = new Date(hang.proposed_datetime);
-                    if (hangDate.toDateString() === colDateStr) {
-                      relevantHoursSet.add(hangDate.getHours());
-                    }
-                  }
-                }
-
-                let visibleHours: number[];
-                if (relevantHoursSet.size === 0) {
-                  visibleHours = HOURS;
-                } else {
-                  visibleHours = [...relevantHoursSet].sort((a, b) => a - b);
-                }
-
-                return (
-                  <div
-                    className="grid gap-px"
-                    style={{ gridTemplateColumns: `auto repeat(${colCount}, 1fr)` }}
-                    onPointerMove={handleGridPointerMove}
-                    onPointerUp={handlePointerUp}
-                  >
-                    <div />
-                    {dayColumns.map((col, i) => {
-                      const isToday =
-                        col.date.toDateString() === new Date().toDateString();
-                      return (
-                        <div
-                          key={i}
-                          className={`py-1 text-center text-xs font-medium truncate ${
-                            isToday
-                              ? "text-indigo-600 dark:text-indigo-400"
-                              : "text-zinc-500"
-                          }`}
-                        >
-                          {col.label}
-                        </div>
-                      );
-                    })}
-                    {visibleHours.map((hour) => (
-                      <React.Fragment key={`row-${hour}`}>
-                        <div className="pr-2 text-right text-[10px] leading-6 text-zinc-400">
-                          {formatHour(hour)}
-                        </div>
+                    const visibleHours = relevantHoursSet.size === 0
+                      ? HOURS
+                      : [...relevantHoursSet].sort((a, b) => a - b);
+                    return (
+                      <div
+                        className="grid gap-px"
+                        style={{ gridTemplateColumns: `auto repeat(${colCount}, 1fr)` }}
+                        onPointerMove={handleGridPointerMove}
+                        onPointerUp={handlePointerUp}
+                      >
+                        <div />
                         {dayColumns.map((col, i) => {
-                          const avail = isCellAvailable(col.dow, hour);
-                          const isSelected = isCellSelected(col.dow, hour, i);
+                          const isToday = col.date.toDateString() === new Date().toDateString();
                           return (
-                            <button
-                              key={`${i}-${hour}`}
-                              type="button"
-                              data-dow={col.dow}
-                              data-hour={hour}
-                              data-col={i}
-                              onPointerDown={(e) => {
-                                e.preventDefault();
-                                handlePointerDown(col.dow, hour, i);
-                              }}
-                              draggable={false}
-                              className={`h-8 rounded-sm border transition-colors select-none touch-none ${
-                                isSelected
-                                  ? "border-indigo-500 ring-2 ring-indigo-400 dark:ring-indigo-500"
-                                  : ""
-                              } ${
-                                avail
-                                  ? `bg-emerald-200 hover:bg-emerald-300 dark:bg-emerald-700/50 dark:hover:bg-emerald-700/70 ${
-                                      isSelected ? "" : "border-emerald-300 dark:border-emerald-600/50"
-                                    }`
-                                  : `bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 ${
-                                      isSelected ? "" : "border-zinc-200 dark:border-zinc-700"
-                                    }`
-                              }`}
-                            />
+                            <div key={i} className={`py-1 text-center text-xs font-medium truncate ${isToday ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-500"}`}>
+                              {col.label}
+                            </div>
                           );
                         })}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                );
-              })()
-            )}
-          </div>
+                        {visibleHours.map((hour) => (
+                          <React.Fragment key={`row-${hour}`}>
+                            <div className="pr-2 text-right text-[10px] leading-6 text-zinc-400">
+                              {formatHour(hour)}
+                            </div>
+                            {dayColumns.map((col, i) => {
+                              const avail = isCellAvailable(col.dow, hour);
+                              const isSelected = isCellSelected(col.dow, hour, i);
+                              return (
+                                <button
+                                  key={`${i}-${hour}`}
+                                  type="button"
+                                  data-dow={col.dow}
+                                  data-hour={hour}
+                                  data-col={i}
+                                  onPointerDown={(e) => { e.preventDefault(); handlePointerDown(col.dow, hour, i); }}
+                                  draggable={false}
+                                  className={`h-8 rounded-sm border transition-colors select-none touch-none ${
+                                    isSelected ? "border-indigo-500 ring-2 ring-indigo-400 dark:ring-indigo-500" : ""
+                                  } ${
+                                    avail
+                                      ? `bg-emerald-200 hover:bg-emerald-300 dark:bg-emerald-700/50 dark:hover:bg-emerald-700/70 ${isSelected ? "" : "border-emerald-300 dark:border-emerald-600/50"}`
+                                      : `bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 ${isSelected ? "" : "border-zinc-200 dark:border-zinc-700"}`
+                                  }`}
+                                />
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
