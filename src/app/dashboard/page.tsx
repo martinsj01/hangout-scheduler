@@ -1701,7 +1701,7 @@ export default function DashboardPage() {
               {/* Who (optional) */}
               {friends.length > 0 && (
                 <div className="mb-5">
-                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Who <span className="normal-case tracking-normal text-zinc-600">(optional)</span></p>
+                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Add Friends <span className="normal-case tracking-normal text-zinc-600">(optional)</span></p>
                   <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
                     {friends.map((f) => {
                       const selected = scheduleSelectedFriendIds.includes(f.id);
