@@ -338,6 +338,7 @@ export default function DashboardPage() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calWeekOffset, setCalWeekOffset] = useState(0);
   const [gcalLoading, setGcalLoading] = useState(false);
+  const [gcalError, setGcalError] = useState<string | null>(null);
   const calendarScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -808,6 +809,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (activeTab !== "calendar" || !gcalConnected) return;
     setGcalLoading(true);
+    setGcalError(null);
     const ws = new Date();
     ws.setDate(ws.getDate() - ((ws.getDay() + 6) % 7) + calWeekOffset * 7);
     ws.setHours(0, 0, 0, 0);
@@ -815,8 +817,16 @@ export default function DashboardPage() {
     we.setDate(ws.getDate() + 7);
     fetch(`/api/google-calendar/events?timeMin=${ws.toISOString()}&timeMax=${we.toISOString()}`)
       .then((r) => r.json())
-      .then((data) => { setCalendarEvents(Array.isArray(data) ? data : []); setGcalLoading(false); })
-      .catch(() => setGcalLoading(false));
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCalendarEvents(data);
+        } else {
+          setGcalError(data?.error ?? "Failed to load events");
+          setCalendarEvents([]);
+        }
+        setGcalLoading(false);
+      })
+      .catch(() => { setGcalError("Failed to load events"); setGcalLoading(false); });
   }, [activeTab, calWeekOffset, gcalConnected]);
 
   // Auto-scroll time grid to current hour when calendar opens
@@ -1224,7 +1234,15 @@ export default function DashboardPage() {
                   {gcalLoading && (
                     <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-zinc-700 border-t-violet-400" />
                   )}
-                  {calWeekOffset !== 0 && (
+                  {gcalError && (
+                    <a
+                      href="/api/google-calendar/auth"
+                      className="rounded-full bg-red-500/15 px-3 py-1 text-xs font-medium text-red-400 hover:bg-red-500/25"
+                    >
+                      Reconnect
+                    </a>
+                  )}
+                  {!gcalError && calWeekOffset !== 0 && (
                     <button
                       type="button"
                       onClick={() => setCalWeekOffset(0)}
