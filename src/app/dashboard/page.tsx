@@ -339,7 +339,20 @@ export default function DashboardPage() {
   const [calWeekOffset, setCalWeekOffset] = useState(0);
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalError, setGcalError] = useState<string | null>(null);
+  const [calEventsKey, setCalEventsKey] = useState(0);
   const calendarScrollRef = useRef<HTMLDivElement>(null);
+
+  // Calendar create modal state
+  const [showCalCreate, setShowCalCreate] = useState(false);
+  const [calCreateDate, setCalCreateDate] = useState<Date | null>(null);
+  const [calCreateStartTime, setCalCreateStartTime] = useState("");
+  const [calCreateEndTime, setCalCreateEndTime] = useState("");
+  const [calCreateTitle, setCalCreateTitle] = useState("");
+  const [calCreateLocation, setCalCreateLocation] = useState("");
+  const [calCreateFriendIds, setCalCreateFriendIds] = useState<string[]>([]);
+  const [calCreateIdeaSelected, setCalCreateIdeaSelected] = useState(false);
+  const [calCreateSubmitting, setCalCreateSubmitting] = useState(false);
+  const [calCreateError, setCalCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -728,6 +741,58 @@ export default function DashboardPage() {
     setScheduleSelectedIdea(null);
   };
 
+  const handleCalCreateSubmit = async () => {
+    if (!calCreateDate || !calCreateTitle.trim()) {
+      setCalCreateError("Please add a title.");
+      return;
+    }
+    const [startH, startM] = calCreateStartTime.split(":").map(Number);
+    const [endH, endM] = calCreateEndTime.split(":").map(Number);
+    const startDt = new Date(calCreateDate);
+    startDt.setHours(startH, startM, 0, 0);
+    const endDt = new Date(calCreateDate);
+    endDt.setHours(endH, endM, 0, 0);
+    if (endDt <= startDt) { setCalCreateError("End time must be after start time."); return; }
+    setCalCreateError(null);
+    setCalCreateSubmitting(true);
+    if (gcalConnected) {
+      const res = await fetch("/api/google-calendar/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary: calCreateTitle.trim(),
+          location: calCreateLocation.trim() || undefined,
+          start: startDt.toISOString(),
+          end: endDt.toISOString(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setCalCreateError(err?.error?.message ?? "Failed to create event.");
+        setCalCreateSubmitting(false);
+        return;
+      }
+    }
+    if (calCreateFriendIds.length > 0 && profile) {
+      const supabase = getSupabase();
+      for (const fid of calCreateFriendIds) {
+        await supabase.from("hangout_suggestions").insert({
+          sender_user_id: profile.id,
+          recipient_user_id: fid,
+          interest_id: null,
+          proposed_datetime: startDt.toISOString(),
+          location: calCreateLocation.trim() || null,
+          description: calCreateTitle.trim(),
+          message: null,
+          status: "pending",
+        });
+      }
+    }
+    setCalCreateSubmitting(false);
+    setShowCalCreate(false);
+    setCalEventsKey((k) => k + 1);
+  };
+
   const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const HOURS = Array.from({ length: 14 }, (_, i) => i + 8); // 8 AM – 9 PM (last slot is 9–10 PM)
 
@@ -827,7 +892,7 @@ export default function DashboardPage() {
         setGcalLoading(false);
       })
       .catch(() => { setGcalError("Failed to load events"); setGcalLoading(false); });
-  }, [activeTab, calWeekOffset, gcalConnected]);
+  }, [activeTab, calWeekOffset, gcalConnected, calEventsKey]);
 
   // Auto-scroll time grid to current hour when calendar opens
   useEffect(() => {
@@ -1327,9 +1392,28 @@ export default function DashboardPage() {
                         className={`relative flex-1 border-l border-zinc-800/50 ${isToday ? "bg-violet-950/10" : ""}`}
                         style={{ height: HOURS.length * CELL_H }}
                       >
-                        {/* Hour lines */}
+                        {/* Hour lines — clickable to create event */}
                         {HOURS.map((h) => (
-                          <div key={h} className="border-b border-zinc-800/30" style={{ height: CELL_H }} />
+                          <div
+                            key={h}
+                            className="border-b border-zinc-800/30 hover:bg-white/[0.025] active:bg-white/[0.05]"
+                            style={{ height: CELL_H, cursor: "default" }}
+                            onClick={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const minute = (e.clientY - rect.top) >= CELL_H / 2 ? 30 : 0;
+                              const endH = minute === 30 ? h + 1 : h;
+                              const endM = minute === 30 ? 0 : 30;
+                              setCalCreateDate(day);
+                              setCalCreateStartTime(`${h.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`);
+                              setCalCreateEndTime(`${(endH % 24).toString().padStart(2, "0")}:${endM.toString().padStart(2, "0")}`);
+                              setCalCreateTitle("");
+                              setCalCreateLocation("");
+                              setCalCreateFriendIds([]);
+                              setCalCreateIdeaSelected(false);
+                              setCalCreateError(null);
+                              setShowCalCreate(true);
+                            }}
+                          />
                         ))}
 
                         {/* Current time indicator */}
@@ -1780,6 +1864,156 @@ export default function DashboardPage() {
                 className="w-full rounded-2xl bg-white py-3.5 text-sm font-semibold text-zinc-900 transition-all hover:bg-zinc-100 disabled:opacity-25"
               >
                 {scheduling ? "Adding…" : "Add to Calendar"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── CALENDAR CREATE MODAL ───────────────────── */}
+      {showCalCreate && calCreateDate && (
+        <>
+          <div
+            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowCalCreate(false)}
+          />
+          <div className="fixed bottom-0 left-0 right-0 z-[61] flex max-h-[90vh] flex-col rounded-t-3xl bg-zinc-900 shadow-2xl">
+            {/* Drag handle */}
+            <div className="flex-shrink-0 pt-4 pb-3">
+              <div className="mx-auto h-1 w-10 rounded-full bg-zinc-700" />
+            </div>
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-4 pb-4">
+
+              {/* Date label */}
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+                {calCreateDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+              </p>
+
+              {/* Time row */}
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Start</p>
+                  <input
+                    type="time"
+                    value={calCreateStartTime}
+                    onChange={(e) => setCalCreateStartTime(e.target.value)}
+                    className="w-full rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  />
+                </div>
+                <div className="mt-4 text-zinc-600">→</div>
+                <div className="flex-1">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">End</p>
+                  <input
+                    type="time"
+                    value={calCreateEndTime}
+                    onChange={(e) => setCalCreateEndTime(e.target.value)}
+                    className="w-full rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  />
+                </div>
+              </div>
+
+              {/* Title with idea search */}
+              <div className="mb-3">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">What</p>
+                <input
+                  type="text"
+                  placeholder="Search ideas or type your own…"
+                  value={calCreateTitle}
+                  onChange={(e) => { setCalCreateTitle(e.target.value); setCalCreateIdeaSelected(false); }}
+                  className="w-full rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                />
+                {!calCreateIdeaSelected && calCreateTitle.length >= 1 && (() => {
+                  const matches = HANGOUT_IDEAS.filter((i) =>
+                    i.title.toLowerCase().includes(calCreateTitle.toLowerCase())
+                  ).slice(0, 5);
+                  return matches.length > 0 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {matches.map((idea) => (
+                        <button
+                          key={idea.title}
+                          type="button"
+                          onClick={() => {
+                            setCalCreateTitle(idea.title);
+                            setCalCreateLocation(idea.location);
+                            setCalCreateIdeaSelected(true);
+                          }}
+                          className="flex items-center gap-1.5 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+                        >
+                          <span>{idea.emoji}</span>
+                          <span>{idea.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+
+              {/* Location */}
+              <div className="mb-5">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Where</p>
+                <input
+                  type="text"
+                  placeholder="Location (optional)"
+                  value={calCreateLocation}
+                  onChange={(e) => setCalCreateLocation(e.target.value)}
+                  className="w-full rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                />
+              </div>
+
+              {/* Add Friends */}
+              {friends.length > 0 && (
+                <div className="mb-4">
+                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+                    Add Friends <span className="normal-case tracking-normal text-zinc-600">(optional)</span>
+                  </p>
+                  <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+                    {friends.map((f) => {
+                      const selected = calCreateFriendIds.includes(f.id);
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setCalCreateFriendIds((prev) =>
+                            prev.includes(f.id) ? prev.filter((id) => id !== f.id) : [...prev, f.id]
+                          )}
+                          className="flex flex-shrink-0 flex-col items-center gap-1.5"
+                        >
+                          <div className={`relative rounded-full ring-2 ring-offset-2 ring-offset-zinc-900 transition-all ${selected ? "ring-white" : "ring-transparent"}`}>
+                            {f.profile_photo_url ? (
+                              <img src={f.profile_photo_url} alt="" className="h-12 w-12 rounded-full object-cover" />
+                            ) : (
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-base font-semibold text-zinc-400">{f.first_name[0]}</div>
+                            )}
+                            {selected && (
+                              <div className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3 text-zinc-900">
+                                  <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <span className={`text-xs font-medium ${selected ? "text-white" : "text-zinc-500"}`}>{f.first_name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {calCreateError && <p className="mb-3 text-sm text-red-400">{calCreateError}</p>}
+            </div>
+
+            {/* Pinned button */}
+            <div className="flex-shrink-0 px-4 pb-10 pt-3">
+              <button
+                type="button"
+                onClick={handleCalCreateSubmit}
+                disabled={calCreateSubmitting || !calCreateTitle.trim()}
+                className="w-full rounded-2xl bg-white py-3.5 text-sm font-semibold text-zinc-900 transition-all hover:bg-zinc-100 disabled:opacity-25"
+              >
+                {calCreateSubmitting ? "Adding…" : "Add to Calendar"}
               </button>
             </div>
           </div>
