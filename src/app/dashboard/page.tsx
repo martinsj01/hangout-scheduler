@@ -726,9 +726,10 @@ export default function DashboardPage() {
     setScheduleError(null);
     setScheduling(true);
 
+    const startDt = scheduleSelectedTime.datetime;
+    const endDt = new Date(new Date(startDt).getTime() + 60 * 60 * 1000).toISOString();
+
     if (gcalConnected) {
-      const startDt = scheduleSelectedTime.datetime;
-      const endDt = new Date(new Date(startDt).getTime() + 60 * 60 * 1000).toISOString();
       await fetch("/api/google-calendar/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -741,14 +742,42 @@ export default function DashboardPage() {
       });
     }
 
+    const supabase = getSupabase();
+    const { data: selfRow } = await supabase.from("hangout_suggestions").insert({
+      sender_user_id: profile.id,
+      recipient_user_id: null,
+      interest_id: null,
+      proposed_datetime: startDt,
+      location: scheduleSelectedIdea.location,
+      description: scheduleSelectedIdea.title,
+      message: null,
+      status: "accepted",
+    }).select("id").single();
+
+    if (selfRow) {
+      setHangs((prev) => {
+        const newHang: Hang = {
+          id: selfRow.id,
+          proposed_datetime: startDt,
+          message: null,
+          location: scheduleSelectedIdea!.location,
+          description: scheduleSelectedIdea!.title,
+          interest: null,
+          friend: null,
+        };
+        return [...prev, newHang].sort(
+          (a, b) => new Date(a.proposed_datetime).getTime() - new Date(b.proposed_datetime).getTime()
+        );
+      });
+    }
+
     if (scheduleSelectedFriendIds.length > 0) {
-      const supabase = getSupabase();
       for (const friendId of scheduleSelectedFriendIds) {
         const { error } = await supabase.from("hangout_suggestions").insert({
           sender_user_id: profile.id,
           recipient_user_id: friendId,
           interest_id: null,
-          proposed_datetime: scheduleSelectedTime.datetime,
+          proposed_datetime: startDt,
           location: scheduleSelectedIdea.location,
           description: scheduleSelectedIdea.title,
           message: null,
@@ -801,8 +830,36 @@ export default function DashboardPage() {
         return;
       }
     }
-    if (calCreateFriendIds.length > 0 && profile) {
+    if (profile) {
       const supabase = getSupabase();
+      const { data: selfRow } = await supabase.from("hangout_suggestions").insert({
+        sender_user_id: profile.id,
+        recipient_user_id: null,
+        interest_id: null,
+        proposed_datetime: startDt.toISOString(),
+        location: calCreateLocation.trim() || null,
+        description: calCreateTitle.trim(),
+        message: null,
+        status: "accepted",
+      }).select("id").single();
+
+      if (selfRow) {
+        setHangs((prev) => {
+          const newHang: Hang = {
+            id: selfRow.id,
+            proposed_datetime: startDt.toISOString(),
+            message: null,
+            location: calCreateLocation.trim() || null,
+            description: calCreateTitle.trim(),
+            interest: null,
+            friend: null,
+          };
+          return [...prev, newHang].sort(
+            (a, b) => new Date(a.proposed_datetime).getTime() - new Date(b.proposed_datetime).getTime()
+          );
+        });
+      }
+
       for (const fid of calCreateFriendIds) {
         await supabase.from("hangout_suggestions").insert({
           sender_user_id: profile.id,

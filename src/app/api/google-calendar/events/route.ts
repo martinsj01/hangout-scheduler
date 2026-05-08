@@ -66,7 +66,7 @@ export async function GET(request: Request) {
 
   const gcalRes = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
-    new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "100" }),
+    new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "100", fields: "items(id,summary,start,end,colorId,extendedProperties)" }),
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
@@ -76,14 +76,17 @@ export async function GET(request: Request) {
 
   const gcalData = await gcalRes.json();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const events = (gcalData.items ?? []).map((e: any) => ({
-    id: e.id,
-    summary: e.summary ?? "(No title)",
-    start: e.start,
-    end: e.end,
-    color: e.colorId ? GCAL_COLORS[e.colorId] : "#8b5cf6",
-    allDay: !e.start?.dateTime,
-  }));
+  const events = (gcalData.items ?? []).map((e: any) => {
+    const isAppCreated = e.extendedProperties?.private?.source === "hangout-scheduler";
+    return {
+      id: e.id,
+      summary: e.summary ?? "(No title)",
+      start: e.start,
+      end: e.end,
+      color: isAppCreated ? "#ec4899" : e.colorId ? GCAL_COLORS[e.colorId] : "#8b5cf6",
+      allDay: !e.start?.dateTime,
+    };
+  });
 
   return NextResponse.json(events);
 }
@@ -126,6 +129,9 @@ export async function POST(request: Request) {
         location,
         start: { dateTime: start },
         end: { dateTime: end },
+        extendedProperties: {
+          private: { source: "hangout-scheduler" },
+        },
       }),
     }
   );
