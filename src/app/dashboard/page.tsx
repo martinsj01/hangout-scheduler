@@ -159,11 +159,35 @@ function IntroAnimation({ loading }: { loading: boolean }) {
 
 const HANGOUT_IDEAS = [
   { emoji: "⚽", title: "Soccer at Pier 40", location: "Pier 40, Hudson River Park", hasOffer: false },
-  { emoji: "☕", title: "New Coffee Shop in SoHo", location: "SoHo, Manhattan", hasOffer: true },
+  { emoji: "🚲", title: "Bike Central Park", location: "Central Park, Manhattan", hasOffer: false },
+  { emoji: "🌸", title: "Brooklyn Botanical Gardens", location: "Prospect Heights, Brooklyn", hasOffer: false },
+  { emoji: "🛍️", title: "Shop at Brooklyn Flea", location: "DUMBO, Brooklyn", hasOffer: false },
+  { emoji: "🌿", title: "Walk the High Line", location: "Chelsea, Manhattan", hasOffer: false },
+  { emoji: "🏝️", title: "Governor's Island", location: "New York Harbor", hasOffer: false },
+  { emoji: "🌅", title: "Sunset at Brooklyn Bridge Park", location: "DUMBO, Brooklyn", hasOffer: false },
+  { emoji: "🏄", title: "Rockaway Beach", location: "Rockaway Beach, Queens", hasOffer: false },
+  { emoji: "🎾", title: "Tennis in Central Park", location: "Central Park Tennis Center", hasOffer: false },
+  { emoji: "🧗", title: "Rock Climbing at Chelsea Piers", location: "Chelsea Piers, Manhattan", hasOffer: false },
   { emoji: "🛁", title: "Wall St Baths", location: "Wall Street Bath & Spa", hasOffer: false },
-  { emoji: "🍕", title: "Pizza Night in LES", location: "Lower East Side", hasOffer: true },
-  { emoji: "🎭", title: "Comedy Show", location: "Village Vanguard", hasOffer: true },
   { emoji: "🏃", title: "Morning Run", location: "Central Park", hasOffer: false },
+  { emoji: "☕", title: "Coffee in SoHo", location: "SoHo, Manhattan", hasOffer: true },
+  { emoji: "🍕", title: "Pizza Night in LES", location: "Lower East Side", hasOffer: true },
+  { emoji: "🥟", title: "Dim Sum in Chinatown", location: "Chinatown, Manhattan", hasOffer: false },
+  { emoji: "🥯", title: "Bagels & Lox", location: "Ess-a-Bagel, Midtown East", hasOffer: false },
+  { emoji: "🍜", title: "Smorgasburg", location: "Prospect Park, Brooklyn", hasOffer: false },
+  { emoji: "🥂", title: "Brunch in the West Village", location: "West Village, Manhattan", hasOffer: true },
+  { emoji: "🎤", title: "Karaoke in Koreatown", location: "K-Town, 32nd St", hasOffer: true },
+  { emoji: "🎳", title: "Bowling at Brooklyn Bowl", location: "Williamsburg, Brooklyn", hasOffer: true },
+  { emoji: "🎭", title: "Comedy Show", location: "Village Vanguard", hasOffer: true },
+  { emoji: "🎷", title: "Jazz at Smalls", location: "Smalls Jazz Club, West Village", hasOffer: false },
+  { emoji: "🎬", title: "Movie at Nitehawk Cinema", location: "Williamsburg, Brooklyn", hasOffer: false },
+  { emoji: "⚾", title: "Yankees Game", location: "Yankee Stadium, the Bronx", hasOffer: false },
+  { emoji: "⛸️", title: "Ice Skating at Rockefeller", location: "Rockefeller Center, Midtown", hasOffer: false },
+  { emoji: "🎨", title: "Whitney Museum", location: "Meatpacking District", hasOffer: false },
+  { emoji: "📚", title: "Strand Bookstore", location: "Union Square, Manhattan", hasOffer: false },
+  { emoji: "🛒", title: "Chelsea Market", location: "Chelsea, Manhattan", hasOffer: true },
+  { emoji: "🌺", title: "NY Botanical Garden", location: "Bronx, New York", hasOffer: false },
+  { emoji: "🎪", title: "Trapeze School NYC", location: "Pier 40, Hudson River Park", hasOffer: false },
 ];
 
 function getTimeSuggestions() {
@@ -223,6 +247,25 @@ function getCardGradient(str: string) {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
+function getIdeaEmoji(title: string): string {
+  const match = HANGOUT_IDEAS.find((i) => i.title === title);
+  return match?.emoji ?? "✨";
+}
+
+function formatHangDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return "Today · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  if (d.toDateString() === tomorrow.toDateString()) {
+    return "Tomorrow · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) +
+    " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const supabaseRef = useRef<SupabaseClient | null>(null);
@@ -272,7 +315,7 @@ export default function DashboardPage() {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [activeTab, setActiveTab] = useState<"home" | "calendar" | "new" | "explore" | "profile">("home");
-  const [homeFilter, setHomeFilter] = useState<"invites" | "past" | null>(null);
+  const [homeFilter, setHomeFilter] = useState<"upcoming" | "invites" | "past">("upcoming");
   const [showHangModal, setShowHangModal] = useState(false);
 
   // Google Calendar state
@@ -928,169 +971,131 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Filter pills */}
+            {/* Tabs */}
             <div className="mb-6 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setHomeFilter(homeFilter === "invites" ? null : "invites")}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${homeFilter === "invites" ? "bg-white text-black" : "bg-zinc-900 text-zinc-400"}`}
-              >
-                Invites{hangoutRequests.length > 0 ? ` (${hangoutRequests.length})` : ""}
-              </button>
-              <button
-                type="button"
-                onClick={() => setHomeFilter(homeFilter === "past" ? null : "past")}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${homeFilter === "past" ? "bg-white text-black" : "bg-zinc-900 text-zinc-400"}`}
-              >
-                Past Hangs
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("explore")}
-                className="ml-auto rounded-full bg-zinc-900 p-2 text-zinc-400"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253M3 12c0 .778.099 1.533.284 2.253" />
-                </svg>
-              </button>
+              {(["upcoming", "invites", "past"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setHomeFilter(tab)}
+                  className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${homeFilter === tab ? "bg-white text-black" : "bg-zinc-900 text-zinc-400"}`}
+                >
+                  {tab === "upcoming" && "Upcoming"}
+                  {tab === "invites" && <>Invites{hangoutRequests.length > 0 ? ` (${hangoutRequests.length})` : ""}</>}
+                  {tab === "past" && "Past Hangs"}
+                </button>
+              ))}
             </div>
 
-            {/* Default view */}
-            {homeFilter === null && (
-              <>
-                {todayHangs.length > 0 ? (
-                  todayHangs.slice(0, 1).map((hang) => {
+            {/* Tab content — fixed height keeps Ideas row stationary */}
+            <div className="no-scrollbar mb-6 h-[300px] overflow-y-auto space-y-2.5">
+
+              {/* Upcoming tab */}
+              {homeFilter === "upcoming" && (
+                hangs.length === 0 ? (
+                  <p className="pt-2 text-sm text-zinc-500">No upcoming hangs.</p>
+                ) : (
+                  hangs.map((hang) => {
                     const title = hang.description || hang.interest?.title || "Hangout";
-                    const hangDate = new Date(hang.proposed_datetime);
-                    const timeLabel = hangDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
                     return (
-                      <div key={hang.id} className={`relative mb-6 flex min-h-[220px] flex-col justify-between overflow-hidden rounded-3xl bg-gradient-to-br ${getCardGradient(title)} p-6`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-1.5 backdrop-blur-sm">
-                            <span className="text-xs text-white/80">Today</span>
-                            {hang.friend?.profile_photo_url ? (
-                              <img src={hang.friend.profile_photo_url} alt="" className="h-4 w-4 rounded-full" />
-                            ) : (
-                              <div className="flex h-4 w-4 items-center justify-center rounded-full bg-white/30 text-[8px] text-white">{hang.friend?.first_name?.[0]}</div>
-                            )}
-                            <span className="text-xs text-white/80">{timeLabel}</span>
-                          </div>
-                          <span className="rounded-full bg-emerald-400/90 px-3 py-1 text-xs font-semibold text-white">Going ✓</span>
+                      <div key={hang.id} className="flex items-center gap-3 rounded-2xl bg-zinc-900 p-3.5">
+                        <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${getCardGradient(title)} text-2xl`}>
+                          {getIdeaEmoji(title)}
                         </div>
-                        <div>
-                          <h2 className="text-2xl font-bold leading-tight text-white">{title}</h2>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-white">{title}</p>
+                          <p className="mt-0.5 text-xs text-zinc-400">{formatHangDate(hang.proposed_datetime)}</p>
                           {hang.friend && (
-                            <div className="mt-2 flex items-center gap-2">
+                            <div className="mt-1 flex items-center gap-1.5">
                               {hang.friend.profile_photo_url ? (
-                                <img src={hang.friend.profile_photo_url} alt="" className="h-6 w-6 rounded-full" />
+                                <img src={hang.friend.profile_photo_url} alt="" className="h-4 w-4 rounded-full" />
                               ) : (
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/30 text-xs text-white">{hang.friend.first_name[0]}</div>
+                                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[9px] text-zinc-300">{hang.friend.first_name[0]}</div>
                               )}
-                              <span className="text-sm text-white/80">with {hang.friend.first_name}</span>
+                              <span className="text-xs text-zinc-500">{hang.friend.first_name}</span>
                             </div>
                           )}
-                          {hang.location && <p className="mt-1 text-sm text-white/60">{hang.location}</p>}
                         </div>
+                        <span className="flex-shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-400">Going</span>
                       </div>
                     );
                   })
-                ) : (
-                  <div className="mb-6 rounded-3xl bg-zinc-900 p-8 text-center">
-                    <p className="text-zinc-400">No hangs scheduled today</p>
-                  </div>
-                )}
+                )
+              )}
 
-                <>
-                    {nextUpHangs.length > 0 && (
-                      <div className="mb-6">
-                        <h3 className="mb-3 text-lg font-semibold">Next Up</h3>
-                        <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
-                          {nextUpHangs.map((hang) => {
-                            const title = hang.description || hang.interest?.title || "Hangout";
-                            const hangDate = new Date(hang.proposed_datetime);
-                            const dayLabel = hangDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-                            return (
-                              <div key={hang.id} className="w-40 flex-shrink-0">
-                                <div className={`mb-2 h-28 w-full rounded-2xl bg-gradient-to-br ${getCardGradient(title)}`} />
-                                <p className="text-sm font-semibold leading-snug">{title}</p>
-                                <p className="mt-0.5 text-xs text-zinc-400">{dayLabel}</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="mb-6">
-                      <h3 className="mb-3 text-lg font-semibold">Ideas</h3>
-                      <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
-                        {HANGOUT_IDEAS.map((idea) => (
-                          <button
-                            key={idea.title}
-                            type="button"
-                            onClick={() => { setScheduleSelectedIdea(idea); setScheduleSelectedFriendIds([]); setScheduleSelectedTime(null); setShowHangModal(true); }}
-                            className="w-40 flex-shrink-0 text-left"
-                          >
-                            <div className={`mb-2 flex h-24 w-full items-center justify-center rounded-2xl bg-gradient-to-br ${getCardGradient(idea.title)} text-4xl`}>
-                              {idea.emoji}
-                            </div>
-                            <p className="text-sm font-semibold leading-snug">{idea.title}</p>
-                            <p className="mt-0.5 text-xs text-zinc-400">{idea.location}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-              </>
-            )}
-
-            {/* Invites view */}
-            {homeFilter === "invites" && (
-              <div className="space-y-3">
-                {hangoutRequests.length === 0 && friendRequests.length === 0 ? (
-                  <p className="text-zinc-400">No pending invites.</p>
+              {/* Invites tab */}
+              {homeFilter === "invites" && (
+                friendRequests.length === 0 && hangoutRequests.length === 0 ? (
+                  <p className="pt-2 text-sm text-zinc-500">No pending invites.</p>
                 ) : (
                   <>
                     {friendRequests.map((req) => (
-                      <div key={req.id} className="flex items-center justify-between rounded-2xl bg-zinc-900 p-4">
-                        <div>
-                          <p className="font-medium">{req.first_name}</p>
-                          <p className="text-sm text-zinc-500">wants to be your friend</p>
+                      <div key={req.id} className="flex items-center gap-3 rounded-2xl bg-zinc-900 p-3.5">
+                        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-500 text-2xl">
+                          👤
                         </div>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => handleAcceptFriend(req.id)} className="rounded-full bg-emerald-500 px-4 py-1.5 text-sm font-medium text-white">Accept</button>
-                          <button type="button" onClick={() => handleDeclineFriend(req.id)} className="rounded-full bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-300">Decline</button>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-white">{req.first_name}</p>
+                          <p className="mt-0.5 text-xs text-zinc-400">Friend request</p>
+                        </div>
+                        <div className="flex flex-shrink-0 gap-2">
+                          <button type="button" onClick={() => handleAcceptFriend(req.id)} className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white">Accept</button>
+                          <button type="button" onClick={() => handleDeclineFriend(req.id)} className="rounded-full bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300">Decline</button>
                         </div>
                       </div>
                     ))}
                     {hangoutRequests.map((req) => {
-                      const reqDate = new Date(req.proposed_datetime);
-                      const dateLabel = reqDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+                      const title = req.interest_title || "Hangout";
                       return (
-                        <div key={req.id} className="rounded-2xl bg-zinc-900 p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="mr-3 flex-1">
-                              <p className="font-medium">{req.first_name} invited you</p>
-                              {req.interest_title && <p className="mt-0.5 text-sm text-zinc-400">{req.interest_title}</p>}
-                              <p className="mt-1 text-xs text-zinc-500">{dateLabel}{req.location && ` · ${req.location}`}</p>
-                              {req.message && <p className="mt-1 text-xs italic text-zinc-400">&quot;{req.message}&quot;</p>}
+                        <div key={req.id} className="flex items-center gap-3 rounded-2xl bg-zinc-900 p-3.5">
+                          <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${getCardGradient(title)} text-2xl`}>
+                            {getIdeaEmoji(title)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-white">{title}</p>
+                            <p className="mt-0.5 text-xs text-zinc-400">{formatHangDate(req.proposed_datetime)}</p>
+                            <div className="mt-1 flex items-center gap-1.5">
+                              <span className="text-xs text-zinc-500">from {req.first_name}</span>
                             </div>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => handleAcceptHangout(req.id)} className="rounded-full bg-emerald-500 px-4 py-1.5 text-sm font-medium text-white">Accept</button>
-                              <button type="button" onClick={() => handleDeclineHangout(req.id)} className="rounded-full bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-300">Decline</button>
-                            </div>
+                          </div>
+                          <div className="flex flex-shrink-0 gap-2">
+                            <button type="button" onClick={() => handleAcceptHangout(req.id)} className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white">Accept</button>
+                            <button type="button" onClick={() => handleDeclineHangout(req.id)} className="rounded-full bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300">Decline</button>
                           </div>
                         </div>
                       );
                     })}
                   </>
-                )}
-              </div>
-            )}
+                )
+              )}
 
-            {homeFilter === "past" && (
-              <p className="text-zinc-400">Past hangs coming soon.</p>
-            )}
+              {/* Past tab */}
+              {homeFilter === "past" && (
+                <p className="pt-2 text-sm text-zinc-500">Past hangs coming soon.</p>
+              )}
+
+            </div>{/* end fixed-height tab container */}
+
+            {/* Ideas — always visible */}
+            <div className="mb-6">
+              <h3 className="mb-3 text-lg font-semibold">Ideas</h3>
+              <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
+                {HANGOUT_IDEAS.map((idea) => (
+                  <button
+                    key={idea.title}
+                    type="button"
+                    onClick={() => { setScheduleSelectedIdea(idea); setScheduleSelectedFriendIds([]); setScheduleSelectedTime(null); setShowHangModal(true); }}
+                    className="w-40 flex-shrink-0 text-left"
+                  >
+                    <div className={`mb-2 flex h-24 w-full items-center justify-center rounded-2xl bg-gradient-to-br ${getCardGradient(idea.title)} text-4xl`}>
+                      {idea.emoji}
+                    </div>
+                    <p className="text-sm font-semibold leading-snug">{idea.title}</p>
+                    <p className="mt-0.5 text-xs text-zinc-400">{idea.location}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
