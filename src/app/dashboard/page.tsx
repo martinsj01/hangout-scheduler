@@ -73,65 +73,103 @@ interface CalendarEvent {
   end: { dateTime?: string; date?: string };
   color: string;
   allDay: boolean;
+  location?: string;
 }
 
-function SlotDigit({ target, delay }: { target: number; delay: number }) {
-  const [display, setDisplay] = useState(0);
-  const [settled, setSettled] = useState(false);
+const REEL_CELL_H = 88; // px — height of each digit cell in the reel
+
+function SlotReel({ target, settleAt, repeats }: { target: number; settleAt: number; repeats: number }) {
+  const DECEL_MS = 480;
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [glow, setGlow] = useState(false);
 
   useEffect(() => {
-    const startTime = Date.now() + delay;
-    const duration = 900;
+    const el = innerRef.current;
+    if (!el) return;
+
+    const finalIndex = (repeats - 1) * 10 + target;
+    const finalY = -(finalIndex * REEL_CELL_H);
+    // velocity chosen so phase-1 + decel integral = |finalY|
+    const v = Math.abs(finalY) / (settleAt + DECEL_MS / 2); // px/ms
+    const spinBlur = Math.min(v * 0.5, 12);
+
+    const startTime = Date.now();
     let raf: number;
-    let lastFlip = 0;
-    const flipInterval = 120;
+    let glowOn: ReturnType<typeof setTimeout>;
+    let glowOff: ReturnType<typeof setTimeout>;
 
     const tick = () => {
-      const now = Date.now();
-      const elapsed = now - startTime;
-      if (elapsed < 0) {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < settleAt) {
+        el.style.transform = `translateY(${-v * elapsed}px)`;
+        el.style.filter = `blur(${spinBlur}px)`;
         raf = requestAnimationFrame(tick);
-        return;
+      } else {
+        // Freeze current pos, then CSS-transition to final with bounce easing
+        const currentPos = -v * settleAt;
+        el.style.transition = "none";
+        el.style.transform = `translateY(${currentPos}px)`;
+        void el.getBoundingClientRect(); // flush
+        el.style.transition = `transform ${DECEL_MS}ms cubic-bezier(0.22, 1.08, 0.36, 1), filter 160ms ease-out`;
+        el.style.transform = `translateY(${finalY}px)`;
+        el.style.filter = "blur(0px)";
+        glowOn  = setTimeout(() => setGlow(true),  DECEL_MS - 30);
+        glowOff = setTimeout(() => setGlow(false), DECEL_MS + 500);
       }
-      if (elapsed >= duration) {
-        setDisplay(target);
-        setSettled(true);
-        return;
-      }
-      if (now - lastFlip >= flipInterval) {
-        setDisplay(Math.floor(Math.random() * 10));
-        lastFlip = now;
-      }
-      raf = requestAnimationFrame(tick);
     };
 
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, delay]);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(glowOn);
+      clearTimeout(glowOff);
+    };
+  }, [target, settleAt, repeats]);
 
   return (
-    <span
-      className={`inline-block tabular-nums transition-opacity duration-300 ${
-        settled ? "opacity-100" : "opacity-70"
-      }`}
-    >
-      {display}
-    </span>
+    <div style={{ position: "relative", display: "inline-block", height: REEL_CELL_H, overflow: "hidden" }}>
+      {/* Cylinder-edge gradient — fades digits above/below the window */}
+      <div style={{
+        position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none",
+        background: "linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, transparent 28%, transparent 72%, rgba(0,0,0,0.82) 100%)",
+      }} />
+      {/* Glow wrapper — flashes on settle */}
+      <div style={{
+        filter: glow ? "brightness(1.4) drop-shadow(0 0 18px rgba(210,180,255,0.8))" : "none",
+        transition: glow ? "none" : "filter 600ms ease-out",
+      }}>
+        <div ref={innerRef} style={{ willChange: "transform" }}>
+          {Array.from({ length: repeats * 10 }, (_, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-center font-extralight text-white"
+              style={{ height: REEL_CELL_H, fontSize: "4.5rem", lineHeight: 1 }}
+            >
+              {i % 10}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function IntroAnimation({ loading }: { loading: boolean }) {
+function IntroAnimation() {
   const TARGET = 546;
   const digits = String(TARGET).split("").map(Number);
+  // Left: slowest spin, stops first. Right: fastest spin, stops last.
+  const configs = [
+    { repeats: 6,  settleAt: 600 },
+    { repeats: 11, settleAt: 1200 },
+    { repeats: 18, settleAt: 1900 },
+  ] as const;
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    if (!loading) {
-      // Start fade-out near the end of the animation
-      const timer = setTimeout(() => setFadeOut(true), 1400);
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
+    // Start fade-out after the last reel settles + decel, regardless of loading state
+    const timer = setTimeout(() => setFadeOut(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div
@@ -139,16 +177,10 @@ function IntroAnimation({ loading }: { loading: boolean }) {
         fadeOut ? "opacity-0" : "opacity-100"
       }`}
     >
-      <div className="flex items-baseline gap-1">
-        <span className="text-7xl font-extralight tracking-tight text-white sm:text-8xl">
-          {loading ? (
-            <span className="opacity-30">...</span>
-          ) : (
-            digits.map((d, i) => (
-              <SlotDigit key={i} target={d} delay={i * 200} />
-            ))
-          )}
-        </span>
+      <div className="flex items-center">
+        {digits.map((d, i) => (
+          <SlotReel key={i} target={d} settleAt={configs[i].settleAt} repeats={configs[i].repeats} />
+        ))}
       </div>
       <p className="mt-4 text-lg font-light tracking-widest text-white/60 uppercase">
         Hangs Scheduled
@@ -381,6 +413,13 @@ export default function DashboardPage() {
   const [calCreateIdeaSelected, setCalCreateIdeaSelected] = useState(false);
   const [calCreateSubmitting, setCalCreateSubmitting] = useState(false);
   const [calCreateError, setCalCreateError] = useState<string | null>(null);
+  const [calEditEventId, setCalEditEventId] = useState<string | null>(null);
+
+  // Calendar event detail popup
+  const [selectedCalEvent, setSelectedCalEvent] = useState<CalendarEvent | null>(null);
+  const [calEventPopupPos, setCalEventPopupPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const [calEventFriendIds, setCalEventFriendIds] = useState<string[]>([]);
+  const [calEventDeleting, setCalEventDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -812,9 +851,14 @@ export default function DashboardPage() {
     if (endDt <= startDt) { setCalCreateError("End time must be after start time."); return; }
     setCalCreateError(null);
     setCalCreateSubmitting(true);
+
     if (gcalConnected) {
-      const res = await fetch("/api/google-calendar/events", {
-        method: "POST",
+      const isEdit = !!calEditEventId;
+      const url = isEdit
+        ? `/api/google-calendar/events/${calEditEventId}`
+        : "/api/google-calendar/events";
+      const res = await fetch(url, {
+        method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           summary: calCreateTitle.trim(),
@@ -825,12 +869,14 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        setCalCreateError(err?.error?.message ?? "Failed to create event.");
+        setCalCreateError(err?.error?.message ?? (isEdit ? "Failed to update event." : "Failed to create event."));
         setCalCreateSubmitting(false);
         return;
       }
     }
-    if (profile) {
+
+    // Only insert hangout_suggestions rows for new events, not edits
+    if (!calEditEventId && profile) {
       const supabase = getSupabase();
       const { data: selfRow } = await supabase.from("hangout_suggestions").insert({
         sender_user_id: profile.id,
@@ -873,8 +919,18 @@ export default function DashboardPage() {
         });
       }
     }
+
     setCalCreateSubmitting(false);
     setShowCalCreate(false);
+    setCalEditEventId(null);
+    setCalEventsKey((k) => k + 1);
+  };
+
+  const handleDeleteCalEvent = async (eventId: string) => {
+    setCalEventDeleting(true);
+    await fetch(`/api/google-calendar/events/${eventId}`, { method: "DELETE" });
+    setCalEventDeleting(false);
+    setSelectedCalEvent(null);
     setCalEventsKey((k) => k + 1);
   };
 
@@ -1064,13 +1120,13 @@ export default function DashboardPage() {
   // Intro animation: dismiss after slot machine finishes
   useEffect(() => {
     if (!loading && showIntro) {
-      const timer = setTimeout(() => setShowIntro(false), 1900);
+      const timer = setTimeout(() => setShowIntro(false), 3500);
       return () => clearTimeout(timer);
     }
   }, [loading, showIntro]);
 
   if (loading || showIntro) {
-    return <IntroAnimation loading={loading} />;
+    return <IntroAnimation />;
   }
 
   const today = new Date();
@@ -1163,7 +1219,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Tab content — fixed height keeps Ideas row stationary */}
-            <div className="no-scrollbar mb-6 h-[300px] overflow-y-auto space-y-2.5">
+            <div className="no-scrollbar mb-0 h-[300px] overflow-y-auto space-y-2.5">
 
               {/* Upcoming tab */}
               {homeFilter === "upcoming" && (
@@ -1252,7 +1308,7 @@ export default function DashboardPage() {
             </div>{/* end fixed-height tab container */}
 
             {/* Trending — always visible */}
-            <div className="mb-6">
+            <div className="mb-6 mt-1">
               <h3 className="mb-3 text-lg font-semibold">Trending</h3>
               <div className="no-scrollbar flex items-start gap-3 overflow-x-auto pb-2">
                 {HANGOUT_IDEAS.filter((i) => i.trending).map((idea) => (
@@ -1441,8 +1497,20 @@ export default function DashboardPage() {
                         {events.map((e) => (
                           <div
                             key={e.id}
-                            className="truncate rounded px-1 text-[9px] font-medium"
+                            className="truncate rounded px-1 text-[9px] font-medium cursor-pointer"
                             style={{ backgroundColor: e.color + "33", color: e.color }}
+                            onClick={(ev) => {
+                              const CARD_W = 256;
+                              const CARD_H = 340;
+                              const rect = ev.currentTarget.getBoundingClientRect();
+                              const left = rect.right + 8 + CARD_W > window.innerWidth
+                                ? Math.max(4, rect.left - 8 - CARD_W)
+                                : rect.right + 8;
+                              const top = Math.max(8, Math.min(rect.top, window.innerHeight - CARD_H - 8));
+                              setCalEventPopupPos({ left, top });
+                              setSelectedCalEvent(e);
+                              setCalEventFriendIds([]);
+                            }}
                           >
                             {e.summary}
                           </div>
@@ -1523,12 +1591,25 @@ export default function DashboardPage() {
                           return (
                             <div
                               key={event.id}
-                              className="absolute left-0.5 right-0.5 overflow-hidden rounded px-1 py-0.5"
+                              className="absolute left-0.5 right-0.5 overflow-hidden rounded px-1 py-0.5 cursor-pointer"
                               style={{
                                 top,
                                 height,
                                 backgroundColor: event.color + "28",
                                 borderLeft: `2px solid ${event.color}`,
+                              }}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                const CARD_W = 256;
+                                const CARD_H = 340;
+                                const rect = ev.currentTarget.getBoundingClientRect();
+                                const left = rect.right + 8 + CARD_W > window.innerWidth
+                                  ? Math.max(4, rect.left - 8 - CARD_W)
+                                  : rect.right + 8;
+                                const top = Math.max(8, Math.min(rect.top, window.innerHeight - CARD_H - 8));
+                                setCalEventPopupPos({ left, top });
+                                setSelectedCalEvent(event);
+                                setCalEventFriendIds([]);
                               }}
                             >
                               <p
@@ -2009,6 +2090,174 @@ export default function DashboardPage() {
               >
                 {scheduling ? "Adding…" : "Add to Calendar"}
               </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── CALENDAR EVENT DETAIL CARD ───────────────── */}
+      {selectedCalEvent && (
+        <>
+          {/* Invisible full-screen dismiss layer */}
+          <div className="fixed inset-0 z-[59]" onClick={() => setSelectedCalEvent(null)} />
+
+          {/* Floating card */}
+          <div
+            className="fixed z-[60] w-64 overflow-hidden rounded-2xl border border-zinc-700/60 bg-zinc-900 shadow-2xl"
+            style={{ left: calEventPopupPos.left, top: calEventPopupPos.top }}
+          >
+            {/* Coloured accent bar */}
+            <div className="h-1.5 w-full" style={{ backgroundColor: selectedCalEvent.color }} />
+
+            {/* Action icons row */}
+            <div className="flex items-center justify-end gap-0.5 px-2 pt-2 pb-1">
+              {/* Edit */}
+              <button
+                type="button"
+                title="Edit"
+                onClick={() => {
+                  const ev = selectedCalEvent;
+                  const startDate = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date!);
+                  const endDate   = ev.end.dateTime   ? new Date(ev.end.dateTime)   : new Date(ev.end.date!);
+                  const pad = (n: number) => n.toString().padStart(2, "0");
+                  setCalCreateDate(startDate);
+                  setCalCreateStartTime(`${pad(startDate.getHours())}:${pad(startDate.getMinutes())}`);
+                  setCalCreateEndTime(`${pad(endDate.getHours())}:${pad(endDate.getMinutes())}`);
+                  setCalCreateTitle(ev.summary);
+                  setCalCreateLocation(ev.location ?? "");
+                  setCalCreateFriendIds([]);
+                  setCalCreateIdeaSelected(false);
+                  setCalCreateError(null);
+                  setCalEditEventId(ev.id);
+                  setSelectedCalEvent(null);
+                  setShowCalCreate(true);
+                }}
+                className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-4 w-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+                </svg>
+              </button>
+              {/* Delete */}
+              <button
+                type="button"
+                title="Delete"
+                disabled={calEventDeleting}
+                onClick={() => handleDeleteCalEvent(selectedCalEvent.id)}
+                className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-red-400 disabled:opacity-40"
+              >
+                {calEventDeleting ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-4 w-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                )}
+              </button>
+              {/* Close */}
+              <button
+                type="button"
+                title="Close"
+                onClick={() => setSelectedCalEvent(null)}
+                className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="max-h-72 overflow-y-auto px-4 pb-4">
+              {/* Title */}
+              <div className="mb-1.5 flex items-start gap-2">
+                <div className="mt-[5px] h-2.5 w-2.5 flex-shrink-0 rounded-sm" style={{ backgroundColor: selectedCalEvent.color }} />
+                <h2 className="text-sm font-semibold leading-snug text-white">{selectedCalEvent.summary}</h2>
+              </div>
+
+              {/* Date / time */}
+              <p className="mb-3 ml-[18px] text-xs text-zinc-400">
+                {(() => {
+                  if (selectedCalEvent.allDay) {
+                    return new Date(selectedCalEvent.start.date!).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                  }
+                  const s = new Date(selectedCalEvent.start.dateTime!);
+                  const e = new Date(selectedCalEvent.end.dateTime!);
+                  const day = s.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                  const startStr = s.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                  const endStr   = e.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                  return `${day} · ${startStr} – ${endStr}`;
+                })()}
+              </p>
+
+              {/* Location */}
+              {selectedCalEvent.location && (
+                <div className="mb-3 flex items-start gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-zinc-500">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+                  </svg>
+                  <p className="text-xs text-zinc-400">{selectedCalEvent.location}</p>
+                </div>
+              )}
+
+              {/* Add Friends */}
+              {friends.length > 0 && (
+                <div className="border-t border-zinc-800 pt-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Add Friends</p>
+                  <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+                    {friends.map((f) => {
+                      const sel = calEventFriendIds.includes(f.id);
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setCalEventFriendIds((prev) =>
+                            prev.includes(f.id) ? prev.filter((x) => x !== f.id) : [...prev, f.id]
+                          )}
+                          className="flex flex-shrink-0 flex-col items-center gap-1"
+                        >
+                          <div className={`relative rounded-full ring-2 ring-offset-1 ring-offset-zinc-900 transition-all ${sel ? "ring-white" : "ring-transparent"}`}>
+                            {f.profile_photo_url ? (
+                              <img src={f.profile_photo_url} alt="" className="h-9 w-9 rounded-full object-cover" />
+                            ) : (
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-semibold text-zinc-300">{f.first_name[0]}</div>
+                            )}
+                          </div>
+                          <span className="text-[9px] text-zinc-500">{f.first_name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {calEventFriendIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!profile) return;
+                        const supabase = getSupabase();
+                        const dt = selectedCalEvent.start.dateTime ?? selectedCalEvent.start.date ?? new Date().toISOString();
+                        for (const fid of calEventFriendIds) {
+                          await supabase.from("hangout_suggestions").insert({
+                            sender_user_id: profile.id,
+                            recipient_user_id: fid,
+                            interest_id: null,
+                            proposed_datetime: dt,
+                            location: selectedCalEvent.location ?? null,
+                            description: selectedCalEvent.summary,
+                            message: null,
+                            status: "pending",
+                          });
+                        }
+                        setCalEventFriendIds([]);
+                        setSelectedCalEvent(null);
+                      }}
+                      className="mt-2 w-full rounded-lg bg-white py-2 text-xs font-semibold text-black"
+                    >
+                      Invite {calEventFriendIds.length} Friend{calEventFriendIds.length > 1 ? "s" : ""}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </>

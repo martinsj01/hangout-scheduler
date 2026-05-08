@@ -66,7 +66,7 @@ export async function GET(request: Request) {
 
   const gcalRes = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
-    new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "100", fields: "items(id,summary,start,end,colorId,extendedProperties)" }),
+    new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "100", fields: "items(id,summary,start,end,colorId,location,extendedProperties)" }),
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
@@ -85,6 +85,7 @@ export async function GET(request: Request) {
       end: e.end,
       color: isAppCreated ? "#ec4899" : e.colorId ? GCAL_COLORS[e.colorId] : "#8b5cf6",
       allDay: !e.start?.dateTime,
+      location: e.location ?? null,
     };
   });
 
