@@ -342,6 +342,34 @@ export default function DashboardPage() {
   const [calEventsKey, setCalEventsKey] = useState(0);
   const calendarScrollRef = useRef<HTMLDivElement>(null);
 
+  // Profile starring state (persisted to localStorage)
+  const [starredFriendIds, setStarredFriendIds] = useState<string[]>([]);
+  const [starredCategories, setStarredCategories] = useState<string[]>([]);
+  const [showAddFriend, setShowAddFriend] = useState(false);
+
+  useEffect(() => {
+    const sf = localStorage.getItem("starredFriendIds");
+    const sc = localStorage.getItem("starredCategories");
+    if (sf) setStarredFriendIds(JSON.parse(sf));
+    if (sc) setStarredCategories(JSON.parse(sc));
+  }, []);
+
+  const toggleStarFriend = (id: string) => {
+    setStarredFriendIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      localStorage.setItem("starredFriendIds", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const toggleStarCategory = (name: string) => {
+    setStarredCategories((prev) => {
+      const next = prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name];
+      localStorage.setItem("starredCategories", JSON.stringify(next));
+      return next;
+    });
+  };
+
   // Calendar create modal state
   const [showCalCreate, setShowCalCreate] = useState(false);
   const [calCreateDate, setCalCreateDate] = useState<Date | null>(null);
@@ -1663,8 +1691,9 @@ export default function DashboardPage() {
 
         {/* ── PROFILE TAB ──────────────────────────────── */}
         {activeTab === "profile" && (
-          <div className="px-4 pt-14">
-            <div className="mb-8 flex items-center gap-4">
+          <div className="px-4 pt-14 pb-28 space-y-8">
+            {/* Header */}
+            <div className="flex items-center gap-4">
               {profile?.profile_photo_url ? (
                 <img src={profile.profile_photo_url} alt="" className="h-20 w-20 rounded-full object-cover" />
               ) : (
@@ -1676,101 +1705,159 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="mb-6 grid grid-cols-2 gap-3">
-              <button onClick={() => { setShowFriends(!showFriends); setShowInterests(false); }} className="rounded-2xl bg-zinc-900 p-5 text-left transition-colors hover:bg-zinc-800">
+            {/* Counts row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-zinc-900 p-5 text-left">
                 <p className="text-3xl font-bold">{friends.length}</p>
                 <p className="text-sm text-zinc-500">Friends</p>
-              </button>
-              <button onClick={() => { setShowInterests(!showInterests); setShowFriends(false); }} className="rounded-2xl bg-zinc-900 p-5 text-left transition-colors hover:bg-zinc-800">
+              </div>
+              <div className="rounded-2xl bg-zinc-900 p-5 text-left">
                 <p className="text-3xl font-bold">{interests.length}</p>
                 <p className="text-sm text-zinc-500">Interests</p>
-              </button>
+              </div>
             </div>
 
-            {showFriends && (
-              <div className="mb-6 space-y-3">
-                <input
-                  type="text"
-                  placeholder="Search for new friends..."
-                  value={friendSearch}
-                  onChange={(e) => setFriendSearch(e.target.value)}
-                  className="block w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-white placeholder-zinc-500 focus:border-zinc-500 focus:outline-none"
-                />
-                {searching && <p className="text-sm text-zinc-500">Searching...</p>}
-                {searchResults.length > 0 && (
-                  <div className="space-y-2">
-                    {searchResults.map((user) => (
-                      <div key={user.id} className="flex items-center justify-between rounded-xl bg-zinc-900 p-3">
-                        <div className="flex items-center gap-3">
-                          {user.profile_photo_url ? (
-                            <img src={user.profile_photo_url} alt="" className="h-8 w-8 rounded-full" />
+            {/* Friends section */}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Friends</p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddFriend((v) => !v)}
+                  className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-700"
+                >
+                  {showAddFriend ? "Done" : "+ Add"}
+                </button>
+              </div>
+
+              {showAddFriend && (
+                <div className="mb-3 space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Search by name or username..."
+                    value={friendSearch}
+                    onChange={(e) => setFriendSearch(e.target.value)}
+                    className="block w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-white placeholder-zinc-500 focus:border-zinc-500 focus:outline-none"
+                  />
+                  {searching && <p className="text-sm text-zinc-500">Searching...</p>}
+                  {searchResults.length > 0 && (
+                    <div className="space-y-2">
+                      {searchResults.map((user) => (
+                        <div key={user.id} className="flex items-center justify-between rounded-xl bg-zinc-900 p-3">
+                          <div className="flex items-center gap-3">
+                            {user.profile_photo_url ? (
+                              <img src={user.profile_photo_url} alt="" className="h-8 w-8 rounded-full" />
+                            ) : (
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium text-zinc-400">{user.first_name[0]}</div>
+                            )}
+                            <div>
+                              <p className="text-sm font-medium">{user.first_name}</p>
+                              <p className="text-xs text-zinc-500">@{user.username}</p>
+                            </div>
+                          </div>
+                          {addedFriends.has(user.id) ? (
+                            <span className="text-sm text-emerald-400">Added</span>
                           ) : (
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium text-zinc-400">{user.first_name[0]}</div>
+                            <div className="flex flex-col items-end gap-1">
+                              <button type="button" onClick={() => handleAddFriend(user.id)} className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-zinc-900 hover:bg-zinc-100">Add</button>
+                              {friendErrors[user.id] && <p className="text-xs text-red-400">{friendErrors[user.id]}</p>}
+                            </div>
                           )}
-                          <div>
-                            <p className="text-sm font-medium">{user.first_name}</p>
-                            <p className="text-xs text-zinc-500">@{user.username}</p>
-                          </div>
                         </div>
-                        {addedFriends.has(user.id) ? (
-                          <span className="text-sm text-emerald-400">Added</span>
-                        ) : (
-                          <div className="flex flex-col items-end gap-1">
-                            <button type="button" onClick={() => handleAddFriend(user.id)} className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-zinc-900 hover:bg-zinc-100">Add</button>
-                            {friendErrors[user.id] && <p className="text-xs text-red-400">{friendErrors[user.id]}</p>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
+                  {friendSearch && !searching && searchResults.length === 0 && <p className="text-sm text-zinc-500">No users found.</p>}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {friends.length === 0 && (
+                  <p className="text-sm text-zinc-600">No friends yet — tap + Add to find people.</p>
                 )}
-                {friendSearch && !searching && searchResults.length === 0 && <p className="text-sm text-zinc-500">No users found.</p>}
-                {friends.length > 0 && (
-                  <div className="space-y-2">
-                    {friendSearch && <p className="text-xs font-medium uppercase tracking-wide text-zinc-600">Your Friends</p>}
-                    {friends.map((f) => (
-                      <div key={f.id} className="flex items-center gap-3 rounded-xl bg-zinc-900 p-3">
+                {friends.map((f) => {
+                  const starred = starredFriendIds.includes(f.id);
+                  return (
+                    <div key={f.id} className="flex items-center justify-between rounded-xl bg-zinc-900 px-4 py-3">
+                      <div className="flex items-center gap-3">
                         {f.profile_photo_url ? (
-                          <img src={f.profile_photo_url} alt="" className="h-8 w-8 rounded-full" />
+                          <img src={f.profile_photo_url} alt="" className="h-9 w-9 rounded-full object-cover" />
                         ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium text-zinc-400">{f.first_name[0]}</div>
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium text-zinc-400">{f.first_name[0]}</div>
                         )}
                         <div>
                           <p className="text-sm font-medium">{f.first_name}</p>
                           <p className="text-xs text-zinc-500">@{f.username}</p>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        onClick={() => toggleStarFriend(f.id)}
+                        className={`text-xl transition-colors ${starred ? "text-amber-400" : "text-zinc-700 hover:text-zinc-500"}`}
+                        title={starred ? "Unstar" : "Star to boost priority"}
+                      >
+                        ★
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
 
-            {showInterests && (
-              <div className="mb-6 space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Add a new interest..."
-                    value={interestInput}
-                    onChange={(e) => setInterestInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddInterest(); } }}
-                    className="block flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-white placeholder-zinc-500 focus:border-zinc-500 focus:outline-none"
-                  />
-                  <button type="button" onClick={handleAddInterest} className="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-900 hover:bg-zinc-100">Add</button>
-                </div>
-                {interests.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {interests.map((interest) => (
-                      <span key={interest.id} className="group relative rounded-full bg-zinc-800 px-3 py-1 text-sm text-zinc-200">
-                        {interest.title}
-                        <button type="button" onClick={() => handleRemoveInterest(interest.id)} className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] leading-none text-white group-hover:flex">×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+            {/* Activities section */}
+            <div>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Activities</p>
+              <div className="space-y-2">
+                {CATEGORIES.map((cat) => {
+                  const starred = starredCategories.includes(cat.name);
+                  return (
+                    <div key={cat.name} className="flex items-center justify-between rounded-xl bg-zinc-900 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{cat.emoji}</span>
+                        <p className="text-sm font-medium">{cat.name}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleStarCategory(cat.name)}
+                        className={`text-xl transition-colors ${starred ? "text-amber-400" : "text-zinc-700 hover:text-zinc-500"}`}
+                        title={starred ? "Unstar" : "Star to boost priority"}
+                      >
+                        ★
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
+
+            {/* Interests section */}
+            <div>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Interests</p>
+              <div className="mb-3 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add a new interest..."
+                  value={interestInput}
+                  onChange={(e) => setInterestInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddInterest(); } }}
+                  className="block flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-white placeholder-zinc-500 focus:border-zinc-500 focus:outline-none"
+                />
+                <button type="button" onClick={handleAddInterest} className="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-900 hover:bg-zinc-100">Add</button>
+              </div>
+              {interests.length === 0 && (
+                <p className="text-sm text-zinc-600">No interests yet — add some above.</p>
+              )}
+              {interests.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {interests.map((interest) => (
+                    <span key={interest.id} className="group relative rounded-full bg-zinc-800 px-3 py-1 text-sm text-zinc-200">
+                      {interest.title}
+                      <button type="button" onClick={() => handleRemoveInterest(interest.id)} className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] leading-none text-white group-hover:flex">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1924,13 +2011,13 @@ export default function DashboardPage() {
                   onChange={(e) => { setCalCreateTitle(e.target.value); setCalCreateIdeaSelected(false); }}
                   className="w-full rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                 />
-                {!calCreateIdeaSelected && calCreateTitle.length >= 1 && (() => {
-                  const matches = HANGOUT_IDEAS.filter((i) =>
-                    i.title.toLowerCase().includes(calCreateTitle.toLowerCase())
-                  ).slice(0, 5);
-                  return matches.length > 0 ? (
+                {!calCreateIdeaSelected && (() => {
+                  const suggestions = calCreateTitle.length >= 1
+                    ? HANGOUT_IDEAS.filter((i) => i.title.toLowerCase().includes(calCreateTitle.toLowerCase())).slice(0, 5)
+                    : HANGOUT_IDEAS.filter((i) => i.trending);
+                  return suggestions.length > 0 ? (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {matches.map((idea) => (
+                      {suggestions.map((idea) => (
                         <button
                           key={idea.title}
                           type="button"
