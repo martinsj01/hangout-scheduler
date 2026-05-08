@@ -158,37 +158,52 @@ function IntroAnimation({ loading }: { loading: boolean }) {
 }
 
 const HANGOUT_IDEAS = [
-  { emoji: "⚽", title: "Soccer at Pier 40", location: "Pier 40, Hudson River Park", hasOffer: false },
-  { emoji: "🚲", title: "Bike Central Park", location: "Central Park, Manhattan", hasOffer: false },
-  { emoji: "🌸", title: "Brooklyn Botanical Gardens", location: "Prospect Heights, Brooklyn", hasOffer: false },
-  { emoji: "🛍️", title: "Shop at Brooklyn Flea", location: "DUMBO, Brooklyn", hasOffer: false },
-  { emoji: "🌿", title: "Walk the High Line", location: "Chelsea, Manhattan", hasOffer: false },
-  { emoji: "🏝️", title: "Governor's Island", location: "New York Harbor", hasOffer: false },
-  { emoji: "🌅", title: "Sunset at Brooklyn Bridge Park", location: "DUMBO, Brooklyn", hasOffer: false },
-  { emoji: "🏄", title: "Rockaway Beach", location: "Rockaway Beach, Queens", hasOffer: false },
-  { emoji: "🎾", title: "Tennis in Central Park", location: "Central Park Tennis Center", hasOffer: false },
-  { emoji: "🧗", title: "Rock Climbing at Chelsea Piers", location: "Chelsea Piers, Manhattan", hasOffer: false },
-  { emoji: "🛁", title: "Wall St Baths", location: "Wall Street Bath & Spa", hasOffer: false },
-  { emoji: "🏃", title: "Morning Run", location: "Central Park", hasOffer: false },
-  { emoji: "☕", title: "Coffee in SoHo", location: "SoHo, Manhattan", hasOffer: true },
-  { emoji: "🍕", title: "Pizza Night in LES", location: "Lower East Side", hasOffer: true },
-  { emoji: "🥟", title: "Dim Sum in Chinatown", location: "Chinatown, Manhattan", hasOffer: false },
-  { emoji: "🥯", title: "Bagels & Lox", location: "Ess-a-Bagel, Midtown East", hasOffer: false },
-  { emoji: "🍜", title: "Smorgasburg", location: "Prospect Park, Brooklyn", hasOffer: false },
-  { emoji: "🥂", title: "Brunch in the West Village", location: "West Village, Manhattan", hasOffer: true },
-  { emoji: "🎤", title: "Karaoke in Koreatown", location: "K-Town, 32nd St", hasOffer: true },
-  { emoji: "🎳", title: "Bowling at Brooklyn Bowl", location: "Williamsburg, Brooklyn", hasOffer: true },
-  { emoji: "🎭", title: "Comedy Show", location: "Village Vanguard", hasOffer: true },
-  { emoji: "🎷", title: "Jazz at Smalls", location: "Smalls Jazz Club, West Village", hasOffer: false },
-  { emoji: "🎬", title: "Movie at Nitehawk Cinema", location: "Williamsburg, Brooklyn", hasOffer: false },
-  { emoji: "⚾", title: "Yankees Game", location: "Yankee Stadium, the Bronx", hasOffer: false },
-  { emoji: "⛸️", title: "Ice Skating at Rockefeller", location: "Rockefeller Center, Midtown", hasOffer: false },
-  { emoji: "🎨", title: "Whitney Museum", location: "Meatpacking District", hasOffer: false },
-  { emoji: "📚", title: "Strand Bookstore", location: "Union Square, Manhattan", hasOffer: false },
-  { emoji: "🛒", title: "Chelsea Market", location: "Chelsea, Manhattan", hasOffer: true },
-  { emoji: "🌺", title: "NY Botanical Garden", location: "Bronx, New York", hasOffer: false },
-  { emoji: "🎪", title: "Trapeze School NYC", location: "Pier 40, Hudson River Park", hasOffer: false },
+  // Outdoors
+  { emoji: "🌅", title: "Sunset at Brooklyn Bridge Park", location: "DUMBO, Brooklyn", hasOffer: false, category: "Outdoors", trending: true },
+  { emoji: "🚲", title: "Bike Central Park", location: "Central Park, Manhattan", hasOffer: false, category: "Outdoors", trending: true },
+  { emoji: "🌿", title: "Walk the High Line", location: "Chelsea, Manhattan", hasOffer: false, category: "Outdoors", trending: false },
+  { emoji: "🏝️", title: "Governor's Island", location: "New York Harbor", hasOffer: false, category: "Outdoors", trending: false },
+  { emoji: "🌸", title: "Brooklyn Botanical Gardens", location: "Prospect Heights, Brooklyn", hasOffer: false, category: "Outdoors", trending: false },
+  { emoji: "🌺", title: "NY Botanical Garden", location: "Bronx, New York", hasOffer: false, category: "Outdoors", trending: false },
+  { emoji: "🏄", title: "Rockaway Beach", location: "Rockaway Beach, Queens", hasOffer: false, category: "Outdoors", trending: false },
+  { emoji: "🏃", title: "Morning Run", location: "Central Park", hasOffer: false, category: "Outdoors", trending: false },
+  // Food & Drink
+  { emoji: "🍜", title: "Smorgasburg", location: "Prospect Park, Brooklyn", hasOffer: false, category: "Food & Drink", trending: true },
+  { emoji: "🥂", title: "Brunch in the West Village", location: "West Village, Manhattan", hasOffer: true, category: "Food & Drink", trending: false },
+  { emoji: "🍕", title: "Pizza Night in LES", location: "Lower East Side", hasOffer: true, category: "Food & Drink", trending: false },
+  { emoji: "🥟", title: "Dim Sum in Chinatown", location: "Chinatown, Manhattan", hasOffer: false, category: "Food & Drink", trending: false },
+  { emoji: "☕", title: "Coffee in SoHo", location: "SoHo, Manhattan", hasOffer: true, category: "Food & Drink", trending: false },
+  { emoji: "🥯", title: "Bagels & Lox", location: "Ess-a-Bagel, Midtown East", hasOffer: false, category: "Food & Drink", trending: false },
+  { emoji: "🛒", title: "Chelsea Market", location: "Chelsea, Manhattan", hasOffer: true, category: "Food & Drink", trending: false },
+  // Sports
+  { emoji: "⚽", title: "Soccer at Pier 40", location: "Pier 40, Hudson River Park", hasOffer: false, category: "Sports", trending: false },
+  { emoji: "🎾", title: "Tennis in Central Park", location: "Central Park Tennis Center", hasOffer: false, category: "Sports", trending: false },
+  { emoji: "🧗", title: "Rock Climbing at Chelsea Piers", location: "Chelsea Piers, Manhattan", hasOffer: false, category: "Sports", trending: false },
+  { emoji: "⚾", title: "Yankees Game", location: "Yankee Stadium, the Bronx", hasOffer: false, category: "Sports", trending: false },
+  { emoji: "⛸️", title: "Ice Skating at Rockefeller", location: "Rockefeller Center, Midtown", hasOffer: false, category: "Sports", trending: false },
+  { emoji: "🎪", title: "Trapeze School NYC", location: "Pier 40, Hudson River Park", hasOffer: false, category: "Sports", trending: true },
+  // Nightlife
+  { emoji: "🎤", title: "Karaoke in Koreatown", location: "K-Town, 32nd St", hasOffer: true, category: "Nightlife", trending: false },
+  { emoji: "🎳", title: "Bowling at Brooklyn Bowl", location: "Williamsburg, Brooklyn", hasOffer: true, category: "Nightlife", trending: false },
+  { emoji: "🎬", title: "Movie at Nitehawk Cinema", location: "Williamsburg, Brooklyn", hasOffer: false, category: "Nightlife", trending: false },
+  // Arts & Culture
+  { emoji: "🎷", title: "Jazz at Smalls", location: "Smalls Jazz Club, West Village", hasOffer: false, category: "Arts & Culture", trending: true },
+  { emoji: "🎭", title: "Comedy Show", location: "Village Vanguard", hasOffer: true, category: "Arts & Culture", trending: false },
+  { emoji: "🎨", title: "Whitney Museum", location: "Meatpacking District", hasOffer: false, category: "Arts & Culture", trending: false },
+  { emoji: "📚", title: "Strand Bookstore", location: "Union Square, Manhattan", hasOffer: false, category: "Arts & Culture", trending: false },
+  { emoji: "🛍️", title: "Shop at Brooklyn Flea", location: "DUMBO, Brooklyn", hasOffer: false, category: "Arts & Culture", trending: false },
+  // Wellness
+  { emoji: "🛁", title: "Wall St Baths", location: "Wall Street Bath & Spa", hasOffer: false, category: "Wellness", trending: true },
 ];
+
+const CATEGORIES = [
+  { name: "Outdoors", emoji: "🌳" },
+  { name: "Food & Drink", emoji: "🍽️" },
+  { name: "Sports", emoji: "🏅" },
+  { name: "Nightlife", emoji: "🌙" },
+  { name: "Arts & Culture", emoji: "🎨" },
+  { name: "Wellness", emoji: "🧘" },
+] as const;
 
 function getTimeSuggestions() {
   const now = new Date();
@@ -1076,11 +1091,11 @@ export default function DashboardPage() {
 
             </div>{/* end fixed-height tab container */}
 
-            {/* Ideas — always visible */}
+            {/* Trending — always visible */}
             <div className="mb-6">
-              <h3 className="mb-3 text-lg font-semibold">Ideas</h3>
-              <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
-                {HANGOUT_IDEAS.map((idea) => (
+              <h3 className="mb-3 text-lg font-semibold">Trending</h3>
+              <div className="no-scrollbar flex items-start gap-3 overflow-x-auto pb-2">
+                {HANGOUT_IDEAS.filter((i) => i.trending).map((idea) => (
                   <button
                     key={idea.title}
                     type="button"
@@ -1509,10 +1524,38 @@ export default function DashboardPage() {
 
         {/* ── EXPLORE TAB ──────────────────────────────── */}
         {activeTab === "explore" && (
-          <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 pt-14">
-            <p className="mb-4 text-5xl">🌍</p>
-            <h2 className="text-2xl font-bold">Explore</h2>
-            <p className="mt-2 text-zinc-400">Coming soon</p>
+          <div className="px-4 pt-14 pb-4">
+            <h1 className="mb-6 text-3xl font-bold">Explore</h1>
+            <div className="space-y-8">
+              {CATEGORIES.map((cat) => {
+                const ideas = HANGOUT_IDEAS.filter((i) => i.category === cat.name);
+                if (ideas.length === 0) return null;
+                return (
+                  <div key={cat.name}>
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="text-lg">{cat.emoji}</span>
+                      <h2 className="text-base font-semibold text-white">{cat.name}</h2>
+                    </div>
+                    <div className="no-scrollbar flex items-start gap-3 overflow-x-auto pb-1">
+                      {ideas.map((idea) => (
+                        <button
+                          key={idea.title}
+                          type="button"
+                          onClick={() => { setScheduleSelectedIdea(idea); setScheduleSelectedFriendIds([]); setScheduleSelectedTime(null); setShowHangModal(true); }}
+                          className="w-36 flex-shrink-0 text-left"
+                        >
+                          <div className={`mb-2 flex h-20 w-full items-center justify-center rounded-2xl bg-gradient-to-br ${getCardGradient(idea.title)} text-3xl`}>
+                            {idea.emoji}
+                          </div>
+                          <p className="text-xs font-semibold leading-snug text-white">{idea.title}</p>
+                          <p className="mt-0.5 text-[11px] leading-snug text-zinc-500">{idea.location}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
