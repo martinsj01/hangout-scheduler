@@ -81,7 +81,6 @@ const REEL_CELL_H = 88; // px — height of each digit cell in the reel
 function SlotReel({ target, settleAt, repeats }: { target: number; settleAt: number; repeats: number }) {
   const DECEL_MS = 480;
   const innerRef = useRef<HTMLDivElement>(null);
-  const [glow, setGlow] = useState(false);
 
   useEffect(() => {
     const el = innerRef.current;
@@ -89,14 +88,11 @@ function SlotReel({ target, settleAt, repeats }: { target: number; settleAt: num
 
     const finalIndex = (repeats - 1) * 10 + target;
     const finalY = -(finalIndex * REEL_CELL_H);
-    // velocity chosen so phase-1 + decel integral = |finalY|
-    const v = Math.abs(finalY) / (settleAt + DECEL_MS / 2); // px/ms
+    const v = Math.abs(finalY) / (settleAt + DECEL_MS / 2);
     const spinBlur = Math.min(v * 0.5, 12);
 
     const startTime = Date.now();
     let raf: number;
-    let glowOn: ReturnType<typeof setTimeout>;
-    let glowOff: ReturnType<typeof setTimeout>;
 
     const tick = () => {
       const elapsed = Date.now() - startTime;
@@ -105,50 +101,36 @@ function SlotReel({ target, settleAt, repeats }: { target: number; settleAt: num
         el.style.filter = `blur(${spinBlur}px)`;
         raf = requestAnimationFrame(tick);
       } else {
-        // Freeze current pos, then CSS-transition to final with bounce easing
         const currentPos = -v * settleAt;
         el.style.transition = "none";
         el.style.transform = `translateY(${currentPos}px)`;
-        void el.getBoundingClientRect(); // flush
+        void el.getBoundingClientRect();
         el.style.transition = `transform ${DECEL_MS}ms cubic-bezier(0.22, 1.08, 0.36, 1), filter 160ms ease-out`;
         el.style.transform = `translateY(${finalY}px)`;
         el.style.filter = "blur(0px)";
-        glowOn  = setTimeout(() => setGlow(true),  DECEL_MS - 30);
-        glowOff = setTimeout(() => setGlow(false), DECEL_MS + 500);
       }
     };
 
     raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(glowOn);
-      clearTimeout(glowOff);
-    };
+    return () => cancelAnimationFrame(raf);
   }, [target, settleAt, repeats]);
 
   return (
     <div style={{ position: "relative", display: "inline-block", height: REEL_CELL_H, overflow: "hidden" }}>
-      {/* Cylinder-edge gradient — fades digits above/below the window */}
       <div style={{
         position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none",
         background: "linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, transparent 28%, transparent 72%, rgba(0,0,0,0.82) 100%)",
       }} />
-      {/* Glow wrapper — flashes on settle */}
-      <div style={{
-        filter: glow ? "brightness(1.4) drop-shadow(0 0 18px rgba(210,180,255,0.8))" : "none",
-        transition: glow ? "none" : "filter 600ms ease-out",
-      }}>
-        <div ref={innerRef} style={{ willChange: "transform" }}>
-          {Array.from({ length: repeats * 10 }, (_, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-center font-extralight text-white"
-              style={{ height: REEL_CELL_H, fontSize: "4.5rem", lineHeight: 1 }}
-            >
-              {i % 10}
-            </div>
-          ))}
-        </div>
+      <div ref={innerRef} style={{ willChange: "transform" }}>
+        {Array.from({ length: repeats * 10 }, (_, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-center font-extralight text-white"
+            style={{ height: REEL_CELL_H, fontSize: "4.5rem", lineHeight: 1 }}
+          >
+            {i % 10}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -159,9 +141,9 @@ function IntroAnimation() {
   const digits = String(TARGET).split("").map(Number);
   // Left: slowest spin, stops first. Right: fastest spin, stops last.
   const configs = [
-    { repeats: 6,  settleAt: 600 },
-    { repeats: 11, settleAt: 1200 },
-    { repeats: 18, settleAt: 1900 },
+    { repeats: 3,  settleAt: 600 },
+    { repeats: 5,  settleAt: 1200 },
+    { repeats: 8,  settleAt: 1900 },
   ] as const;
   const [fadeOut, setFadeOut] = useState(false);
 
@@ -228,6 +210,7 @@ const HANGOUT_IDEAS = [
   { emoji: "🛁", title: "Wall St Baths", location: "Wall Street Bath & Spa", hasOffer: false, category: "Wellness", trending: true },
 ];
 
+
 const CATEGORIES = [
   { name: "Outdoors", emoji: "🌳" },
   { name: "Food & Drink", emoji: "🍽️" },
@@ -287,6 +270,21 @@ const CARD_GRADIENTS = [
   "from-amber-500 via-orange-400 to-rose-500",
   "from-emerald-500 via-teal-500 to-cyan-400",
 ];
+
+type HangoutIdea = typeof HANGOUT_IDEAS[number];
+
+function scoreIdea(idea: HangoutIdea, starredCategories: string[], hangs: Hang[]): number {
+  let score = 0;
+  if (starredCategories.includes(idea.category)) score += 40;
+  const matches = hangs.filter(
+    (h) => h.description === idea.title || h.interest?.title === idea.title
+  );
+  if (matches.length > 0) score += 25;
+  const recentCutoff = Date.now() - 14 * 86400000;
+  if (matches.some((h) => new Date(h.proposed_datetime).getTime() > recentCutoff)) score -= 30;
+  if (idea.trending) score += 15;
+  return score;
+}
 
 function getCardGradient(str: string) {
   let hash = 0;
@@ -379,12 +377,37 @@ export default function DashboardPage() {
   const [starredCategories, setStarredCategories] = useState<string[]>([]);
   const [showAddFriend, setShowAddFriend] = useState(false);
 
+  // Theme state
+  const [isDark, setIsDark] = useState(true);
+
+  // Username edit state
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
+
   useEffect(() => {
     const sf = localStorage.getItem("starredFriendIds");
     const sc = localStorage.getItem("starredCategories");
     if (sf) setStarredFriendIds(JSON.parse(sf));
     if (sc) setStarredCategories(JSON.parse(sc));
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "light") setIsDark(false);
   }, []);
+
+  const toggleTheme = () => {
+    setIsDark((prev) => {
+      const next = !prev;
+      localStorage.setItem("theme", next ? "dark" : "light");
+      document.documentElement.classList.toggle("dark", next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDark);
+  }, [isDark]);
 
   const toggleStarFriend = (id: string) => {
     setStarredFriendIds((prev) => {
@@ -755,6 +778,50 @@ export default function DashboardPage() {
     await fetch("/api/google-calendar/disconnect", { method: "POST" });
     setGcalConnected(false);
     setCalendarEvents([]);
+  };
+
+  const handleLogout = async () => {
+    const supabase = getSupabase();
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
+
+  useEffect(() => {
+    if (!editingUsername) return;
+    const val = usernameInput.trim().toLowerCase();
+    if (val.length < 3 || val === profile?.username) {
+      setUsernameAvailable(null);
+      return;
+    }
+    setCheckingUsername(true);
+    const t = setTimeout(async () => {
+      const supabase = getSupabase();
+      const { data } = await supabase
+        .from("users")
+        .select("id")
+        .eq("username", val)
+        .neq("id", profile!.id)
+        .maybeSingle();
+      setUsernameAvailable(!data);
+      setCheckingUsername(false);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [usernameInput, editingUsername, profile]);
+
+  const handleSaveUsername = async () => {
+    if (!profile || !usernameAvailable) return;
+    const val = usernameInput.trim().toLowerCase();
+    setSavingUsername(true);
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("users")
+      .update({ username: val })
+      .eq("id", profile.id);
+    if (!error) {
+      setProfile((p) => p ? { ...p, username: val } : p);
+      setEditingUsername(false);
+    }
+    setSavingUsername(false);
   };
 
   const handleAddToCalendar = async () => {
@@ -1135,18 +1202,21 @@ export default function DashboardPage() {
   const nextUpHangs = hangs.filter((h) => { const d = new Date(h.proposed_datetime); return d > today && d <= next7; });
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className={`min-h-screen ${isDark ? "bg-black text-white" : "bg-zinc-50 text-zinc-900"}`}>
       <div className="pb-28">
 
         {/* ── HOME TAB ─────────────────────────────────── */}
         {activeTab === "home" && (
-          <div className="px-4 pt-14">
+          <div className="px-5 pt-16">
             {/* Header */}
-            <div className="mb-6 flex items-start justify-between">
+            <div className="mb-8 flex items-start justify-between">
               <div>
-                <h1 className="text-3xl font-bold">Hey {profile?.first_name}</h1>
-                <p className="mt-0.5 text-sm text-zinc-400">
-                  {todayHangs.length > 0 ? "You have plans tonight 🌙" : "No plans today"}
+                <p className="text-[12px] font-medium uppercase tracking-widest text-zinc-600">
+                  {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                </p>
+                <h1 className="mt-1 text-[32px] font-bold leading-none tracking-tight">{profile?.first_name}</h1>
+                <p className="mt-1.5 text-[13px] text-zinc-500">
+                  {todayHangs.length > 0 ? `${todayHangs.length} thing${todayHangs.length > 1 ? "s" : ""} today` : "Nothing on yet"}
                 </p>
               </div>
               <button
@@ -1229,25 +1299,25 @@ export default function DashboardPage() {
                   hangs.map((hang) => {
                     const title = hang.description || hang.interest?.title || "Hangout";
                     return (
-                      <div key={hang.id} className="flex items-center gap-3 rounded-2xl bg-zinc-900 p-3.5">
-                        <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${getCardGradient(title)} text-2xl`}>
+                      <div key={hang.id} className="flex items-center gap-3 rounded-2xl border border-white/[0.05] bg-zinc-900/70 p-3.5">
+                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[10px] bg-zinc-800 text-lg">
                           {getIdeaEmoji(title)}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-white">{title}</p>
-                          <p className="mt-0.5 text-xs text-zinc-400">{formatHangDate(hang.proposed_datetime)}</p>
+                          <p className="truncate text-[14px] font-semibold text-white">{title}</p>
+                          <p className="mt-0.5 text-[12px] text-zinc-500">{formatHangDate(hang.proposed_datetime)}</p>
                           {hang.friend && (
                             <div className="mt-1 flex items-center gap-1.5">
                               {hang.friend.profile_photo_url ? (
                                 <img src={hang.friend.profile_photo_url} alt="" className="h-4 w-4 rounded-full" />
                               ) : (
-                                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[9px] text-zinc-300">{hang.friend.first_name[0]}</div>
+                                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[9px] text-zinc-400">{hang.friend.first_name[0]}</div>
                               )}
-                              <span className="text-xs text-zinc-500">{hang.friend.first_name}</span>
+                              <span className="text-[11px] text-zinc-500">{hang.friend.first_name}</span>
                             </div>
                           )}
                         </div>
-                        <span className="flex-shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-400">Going</span>
+                        <span className="flex-shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-500">Going</span>
                       </div>
                     );
                   })
@@ -1309,7 +1379,7 @@ export default function DashboardPage() {
 
             {/* Trending — always visible */}
             <div className="mb-6 mt-1">
-              <h3 className="mb-3 text-lg font-semibold">Trending</h3>
+              <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-widest text-zinc-500">Trending</h3>
               <div className="no-scrollbar flex items-start gap-3 overflow-x-auto pb-2">
                 {HANGOUT_IDEAS.filter((i) => i.trending).map((idea) => (
                   <button
@@ -1656,43 +1726,82 @@ export default function DashboardPage() {
             {!showScheduleHangout ? (
               <>
                 {friends.length > 0 && (
-                  <div className="no-scrollbar mb-5 flex gap-3 overflow-x-auto pb-1">
-                    {friends.map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => { toggleScheduleFriend(f.id); setShowScheduleHangout(true); }}
-                        className="flex flex-shrink-0 flex-col items-center gap-1"
-                      >
-                        {f.profile_photo_url ? (
-                          <img src={f.profile_photo_url} alt="" className="h-10 w-10 rounded-full object-cover" />
-                        ) : (
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-800 text-sm font-semibold text-zinc-400">{f.first_name[0]}</div>
-                        )}
-                        <span className="text-xs text-zinc-500">{f.first_name}</span>
-                      </button>
-                    ))}
+                  <div className="mb-5">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Friends</p>
+                    <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+                      {friends.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => { toggleScheduleFriend(f.id); setShowScheduleHangout(true); }}
+                          className="flex flex-shrink-0 flex-col items-center gap-1"
+                        >
+                          {f.profile_photo_url ? (
+                            <img src={f.profile_photo_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-800 text-sm font-semibold text-zinc-400">{f.first_name[0]}</div>
+                          )}
+                          <span className="text-xs text-zinc-500">{f.first_name}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3">
-                  {HANGOUT_IDEAS.map((idea) => (
-                    <button
-                      key={idea.title}
-                      type="button"
-                      onClick={() => { setScheduleSelectedIdea(idea); setShowScheduleHangout(true); }}
-                      className="relative rounded-2xl bg-zinc-900 p-4 text-left transition-colors hover:bg-zinc-800"
-                    >
-                      {idea.hasOffer && (
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute right-3 top-3 h-4 w-4 text-zinc-500">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
-                        </svg>
-                      )}
-                      <span className="mb-2 block text-2xl">{idea.emoji}</span>
-                      <p className="text-sm font-semibold leading-snug text-white">{idea.title}</p>
-                      <p className="mt-1 text-xs text-zinc-500">{idea.location}</p>
-                    </button>
-                  ))}
-                </div>
+                {(() => {
+                  // Derive card count from available viewport height
+                  const hasFriends = friends.length > 0;
+                  const availH = (typeof window !== "undefined" ? window.innerHeight : 700)
+                    - 56   // pt-14 header
+                    - 80   // bottom nav
+                    - (hasFriends ? 88 : 0) // friends row
+                    - 80;  // section labels + browse all button
+                  const rows = Math.max(2, Math.min(4, Math.floor(availH / 148)));
+                  const cardCount = rows * 2;
+
+                  const scored = [...HANGOUT_IDEAS]
+                    .map((idea) => ({ idea, score: scoreIdea(idea, starredCategories, hangs) }))
+                    .sort((a, b) => b.score - a.score);
+
+                  // Cold-start: if no signals, fall back to trending
+                  const hasSignals = starredCategories.length > 0 || hangs.length > 0;
+                  const recommended = hasSignals
+                    ? scored.slice(0, cardCount).map((x) => x.idea)
+                    : HANGOUT_IDEAS.filter((i) => i.trending).slice(0, cardCount);
+
+                  return (
+                    <>
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Ideas</p>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("explore")}
+                          className="text-[11px] font-medium text-zinc-500 hover:text-zinc-300"
+                        >
+                          Browse all →
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {recommended.map((idea) => (
+                          <button
+                            key={idea.title}
+                            type="button"
+                            onClick={() => { setScheduleSelectedIdea(idea); setScheduleSelectedFriendIds([]); setScheduleSelectedTime(null); setShowHangModal(true); }}
+                            className="relative rounded-2xl bg-zinc-900 p-4 text-left transition-colors hover:bg-zinc-800"
+                          >
+                            {idea.hasOffer && (
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute right-3 top-3 h-4 w-4 text-zinc-500">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                              </svg>
+                            )}
+                            <span className="mb-2 block text-2xl">{idea.emoji}</span>
+                            <p className="text-sm font-semibold leading-snug text-white">{idea.title}</p>
+                            <p className="mt-1 text-xs text-zinc-500">{idea.location}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </>
             ) : (
               <div className="rounded-3xl bg-zinc-900 p-6">
@@ -1742,34 +1851,6 @@ export default function DashboardPage() {
                         >
                           <p className={`text-sm font-semibold ${selected ? "text-zinc-900" : "text-zinc-200"}`}>{slot.label}</p>
                           <p className={`mt-0.5 text-xs ${selected ? "text-zinc-500" : "text-zinc-400"}`}>{slot.sublabel}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="mb-7">
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Pick a hang</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {HANGOUT_IDEAS.map((idea) => {
-                      const selected = scheduleSelectedIdea?.title === idea.title;
-                      const dateLabel = scheduleSelectedTime?.sublabel ?? "Pick a time";
-                      return (
-                        <button
-                          key={idea.title}
-                          type="button"
-                          onClick={() => setScheduleSelectedIdea(selected ? null : idea)}
-                          className={`relative rounded-2xl p-4 text-left transition-all ${selected ? "bg-white ring-2 ring-white" : "bg-zinc-800 hover:bg-zinc-700"}`}
-                        >
-                          {idea.hasOffer && (
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute right-3 top-3 h-4 w-4 text-zinc-500">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
-                            </svg>
-                          )}
-                          <span className="mb-2.5 block text-2xl">{idea.emoji}</span>
-                          <p className={`text-sm font-semibold leading-snug ${selected ? "text-zinc-900" : "text-zinc-100"}`}>{idea.title}</p>
-                          <p className={`mt-1 text-xs ${selected ? "text-zinc-500" : "text-zinc-400"}`}>{idea.location}</p>
-                          <p className={`mt-0.5 text-xs ${selected ? "text-zinc-500" : "text-zinc-400"}`}>{dateLabel}</p>
                         </button>
                       );
                     })}
@@ -1831,15 +1912,81 @@ export default function DashboardPage() {
         {activeTab === "profile" && (
           <div className="px-4 pt-14 pb-28 space-y-8">
             {/* Header */}
-            <div className="flex items-center gap-4">
-              {profile?.profile_photo_url ? (
-                <img src={profile.profile_photo_url} alt="" className="h-20 w-20 rounded-full object-cover" />
-              ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-zinc-800 text-2xl font-bold text-zinc-400">{profile?.first_name?.[0]}</div>
-              )}
-              <div>
-                <h1 className="text-2xl font-bold">{profile?.first_name}</h1>
-                <p className="text-zinc-500">@{profile?.username}</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                {profile?.profile_photo_url ? (
+                  <img src={profile.profile_photo_url} alt="" className="h-20 w-20 rounded-full object-cover" />
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-zinc-800 text-2xl font-bold text-zinc-400">{profile?.first_name?.[0]}</div>
+                )}
+                <div>
+                  <h1 className="text-2xl font-bold">{profile?.first_name}</h1>
+                  {editingUsername ? (
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={usernameInput}
+                        onChange={(e) => { setUsernameInput(e.target.value.toLowerCase()); setUsernameAvailable(null); }}
+                        className="w-36 rounded-lg bg-zinc-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveUsername}
+                        disabled={savingUsername || !usernameAvailable}
+                        className="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900 disabled:opacity-30"
+                      >
+                        {savingUsername ? "…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setEditingUsername(false); setUsernameAvailable(null); }}
+                        className="text-xs text-zinc-500"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setUsernameInput(profile?.username ?? ""); setEditingUsername(true); setUsernameAvailable(null); }}
+                      className="group flex items-center gap-1 text-zinc-500"
+                    >
+                      <span>@{profile?.username}</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+                      </svg>
+                    </button>
+                  )}
+                  {editingUsername && checkingUsername && <p className="mt-0.5 text-xs text-zinc-500">Checking…</p>}
+                  {editingUsername && !checkingUsername && usernameAvailable === true && <p className="mt-0.5 text-xs text-emerald-400">Available</p>}
+                  {editingUsername && !checkingUsername && usernameAvailable === false && <p className="mt-0.5 text-xs text-red-400">Already taken</p>}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className={`rounded-full p-2 text-sm transition-colors ${isDark ? "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700"}`}
+                  title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {isDark ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-4 w-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-4 w-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${isDark ? "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700"}`}
+                >
+                  Log out
+                </button>
               </div>
             </div>
 
@@ -2414,37 +2561,49 @@ export default function DashboardPage() {
       )}
 
       {/* ── BOTTOM NAV ───────────────────────────────── */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800/60 bg-black/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-md items-end justify-around px-2 py-2 pb-4">
-          <button type="button" onClick={() => setActiveTab("home")} className={`flex flex-col items-center gap-0.5 px-4 py-1 ${activeTab === "home" ? "text-white" : "text-zinc-600"}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={activeTab === "home" ? 2 : 1.5} stroke="currentColor" className="h-6 w-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-            </svg>
-            <span className="text-[10px] font-medium">Home</span>
-          </button>
-          <button type="button" onClick={() => setActiveTab("calendar")} className={`flex flex-col items-center gap-0.5 px-4 py-1 ${activeTab === "calendar" ? "text-white" : "text-zinc-600"}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={activeTab === "calendar" ? 2 : 1.5} stroke="currentColor" className="h-6 w-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
-            </svg>
-            <span className="text-[10px] font-medium">Calendar</span>
-          </button>
-          <button type="button" onClick={() => setActiveTab("new")} className="-mt-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-700 shadow-lg shadow-violet-900/60">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-7 w-7 text-white">
+      <div className={`fixed bottom-0 left-0 right-0 z-50 border-t backdrop-blur-2xl ${isDark ? "border-white/[0.06] bg-zinc-950/80" : "border-zinc-200/60 bg-white/80"}`}>
+        <div className="mx-auto flex max-w-md items-center justify-around px-4 pb-6 pt-2">
+          {(["home", "calendar"] as const).map((tab) => (
+            <button key={tab} type="button" onClick={() => setActiveTab(tab)} className={`flex flex-col items-center gap-1 px-3 py-1 transition-colors ${activeTab === tab ? "text-white" : "text-zinc-600 hover:text-zinc-400"}`}>
+              {tab === "home" && (
+                <svg xmlns="http://www.w3.org/2000/svg" fill={activeTab === tab ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-[22px] w-[22px]">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                </svg>
+              )}
+              {tab === "calendar" && (
+                <svg xmlns="http://www.w3.org/2000/svg" fill={activeTab === tab ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-[22px] w-[22px]">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+                </svg>
+              )}
+              <span className="text-[10px] font-medium capitalize">{tab}</span>
+            </button>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("new")}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-lg shadow-black/40 transition-transform active:scale-95"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-6 w-6 text-zinc-900">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
           </button>
-          <button type="button" onClick={() => setActiveTab("explore")} className={`flex flex-col items-center gap-0.5 px-4 py-1 ${activeTab === "explore" ? "text-white" : "text-zinc-600"}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={activeTab === "explore" ? 2 : 1.5} stroke="currentColor" className="h-6 w-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253M3 12c0 .778.099 1.533.284 2.253" />
-            </svg>
-            <span className="text-[10px] font-medium">Explore</span>
-          </button>
-          <button type="button" onClick={() => setActiveTab("profile")} className={`flex flex-col items-center gap-0.5 px-4 py-1 ${activeTab === "profile" ? "text-white" : "text-zinc-600"}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={activeTab === "profile" ? 2 : 1.5} stroke="currentColor" className="h-6 w-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-            </svg>
-            <span className="text-[10px] font-medium">Profile</span>
-          </button>
+
+          {(["explore", "profile"] as const).map((tab) => (
+            <button key={tab} type="button" onClick={() => setActiveTab(tab)} className={`flex flex-col items-center gap-1 px-3 py-1 transition-colors ${activeTab === tab ? "text-white" : "text-zinc-600 hover:text-zinc-400"}`}>
+              {tab === "explore" && (
+                <svg xmlns="http://www.w3.org/2000/svg" fill={activeTab === tab ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-[22px] w-[22px]">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253M3 12c0 .778.099 1.533.284 2.253" />
+                </svg>
+              )}
+              {tab === "profile" && (
+                <svg xmlns="http://www.w3.org/2000/svg" fill={activeTab === tab ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-[22px] w-[22px]">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                </svg>
+              )}
+              <span className="text-[10px] font-medium capitalize">{tab}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>

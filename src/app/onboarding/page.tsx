@@ -288,7 +288,7 @@ export default function OnboardingPage() {
               </div>
               <div>
                 <label htmlFor="username" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Username
+                  Username <span className="font-normal text-zinc-400 dark:text-zinc-500">(you can change this later)</span>
                 </label>
                 <input
                   id="username"
@@ -401,10 +401,10 @@ export default function OnboardingPage() {
           <>
             <div className="text-center">
               <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                Hang Times
+                Best times to reach you
               </h1>
               <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-                When are you usually free to hang out?
+                When should we suggest plans?
               </p>
             </div>
             <div className="space-y-4">
